@@ -1,5 +1,6 @@
 # Logs & Storage
-config/config.json
+config/*
+!config/.gitkeep
 logs/*
 !logs/.gitkeep
 storage/*

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h1>Security Dashboard</h1>
+    <p>WhatsApp Token: {{ wa_conf.token if wa_conf.token else "Not set" }}</p>
+    <p>WhatsApp Number: {{ wa_conf.number if wa_conf.number else "Not set" }}</p>
+</body>
+</html>
