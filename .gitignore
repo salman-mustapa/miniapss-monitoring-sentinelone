@@ -1,0 +1,20 @@
+# Logs & Storage
+config/config.json
+logs/*
+!logs/.gitkeep
+storage/*
+!storage/.gitkeep
+
+# Virtual env & python artifacts
+venv/
+.env
+__pycache__/
+*.pyc
+
+# System
+.DS_Store
+
+
+# Editor
+.vscode/
+.idea/
