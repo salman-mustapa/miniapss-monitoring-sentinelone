@@ -1,22 +1,87 @@
 <!doctype html>
 <html>
-  <body>
-    <h2>Config editor</h2>
-    <form method="post" action="/config">
-      <label>SentinelOne base URL</label><br>
-      <input type="text" name="sentinel_base_url" value="{{ config.sentinelone.base_url | default('') }}"><br>
-      <label>SentinelOne API token</label><br>
-      <input type="text" name="sentinel_api_token" value="{{ config.sentinelone.api_token | default('') }}"><br>
-      <label>WhatsApp base_url</label><br>
-      <input type="text" name="wa_base_url" value="{{ config.channels.whatsapp.bridge.base_url | default('') }}"><br>
-      <label>WhatsApp session name</label><br>
-      <input type="text" name="wa_session_name" value="{{ config.channels.whatsapp.bridge.session_name | default('') }}"><br>
-      <label>Polling interval (sec)</label><br>
-      <input type="number" name="polling_interval" value="{{ config.polling.interval_seconds | default(60) }}"><br>
-      <label>Web PIN</label><br>
-      <input type="text" name="web_pin" value="{{ config.web.pin | default('') }}"><br>
-      <button type="submit">Save</button>
-    </form>
-    <p><a href="/">Back</a></p>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <title>Config - Sentinel Monitor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background:#0b0f10; color:#8aff9b; font-family: monospace; }
+    .card { background:#071012; border:1px solid #0f4; color: #0f4 }
+    input, textarea {background:#00110a;  color:#8aff9b; border:1px solid #063; }
+    label { color:#8aff9b; }
+  </style>
+</head>
+<body class="p-3">
+  <div class="container">
+    <div class="card p-3">
+      <h4>Configuration</h4>
+      <form method="post" action="/config">
+        <h6>SentinelOne</h6>
+        <div class="mb-2">
+          <label>Base URL</label>
+          <input name="sentinel_base_url" class="form-control" value="{{ config.sentinelone.base_url or '' }}">
+        </div>
+        <div class="mb-2">
+          <label>API Token</label>
+          <input name="sentinel_api_token" class="form-control" value="{{ config.sentinelone.api_token or '' }}">
+        </div>
+
+        <h6 class="mt-3">Telegram</h6>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input text-muted" name="telegram_enabled" type="checkbox" {% if config.channels.telegram.enabled %}checked{% endif %}>
+          <label class="form-check-label">Enabled</label>
+        </div>
+        <div class="mb-2">
+          <label>Bot token</label>
+          <input name="telegram_token" class="form-control" value="{{ config.channels.telegram.bot_token or '' }}">
+        </div>
+        <div class="mb-2">
+          <label>Chat ID</label>
+          <input name="telegram_chat_id" class="form-control" value="{{ config.channels.telegram.chat_id or '' }}">
+        </div>
+
+        <h6 class="mt-3">Teams</h6>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" name="teams_enabled" type="checkbox" {% if config.channels.teams.enabled %}checked{% endif %}>
+          <label class="form-check-label">Enabled</label>
+        </div>
+        <div class="mb-2">
+          <label>Incoming webhook URL</label>
+          <input name="teams_webhook" class="form-control" value="{{ config.channels.teams.webhook_url or '' }}">
+        </div>
+
+        <h6 class="mt-3">WhatsApp Bridge</h6>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" name="wa_enabled" type="checkbox" {% if config.channels.whatsapp.enabled %}checked{% endif %}>
+          <label class="form-check-label">Enabled</label>
+        </div>
+        <div class="mb-2">
+          <label>WA base URL</label>
+          <input name="wa_base_url" class="form-control" value="{{ config.channels.whatsapp.bridge.base_url or '' }}">
+        </div>
+        <div class="mb-2">
+          <label>Session name</label>
+          <input name="wa_session_name" class="form-control" value="{{ config.channels.whatsapp.bridge.session_name or '' }}">
+        </div>
+
+        <h6 class="mt-3">Other</h6>
+        <div class="mb-2">
+          <label>Polling interval (sec)</label>
+          <input name="polling_interval" class="form-control" value="{{ config.polling.interval_seconds or 60 }}">
+        </div>
+        <div class="mb-2">
+          <label>Web PIN</label>
+          <input name="web_pin" class="form-control" value="{{ config.web.pin or '' }}">
+        </div>
+
+        <div class="d-grid mt-3">
+          <button class="btn btn-success">Save config</button>
+        </div>
+      </form>
+      <div class="mt-2">
+        <a href="/" class="btn btn-link">← Back</a>
+      </div>
+    </div>
+  </div>
+</body>
 </html>
