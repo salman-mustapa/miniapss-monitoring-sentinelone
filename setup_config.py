@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# setup_config.py
 """setup_config.py
 Proses sederhana untuk membuat config/config.json berdasarkan inputan user.
 Test koneksi akan langsung di tampilkan (by Telegram/Team, Or other).
@@ -101,6 +102,13 @@ def run_setup():
         wa_cfg['bridge']['base_url'] = prompt('Wa bridge base URL', wa_cfg['bridge']['base_url'])
         wa_cfg['bridge']['session_name'] = prompt('Wa bridge session_name', wa_cfg['bridge']['session_name'])
         print('Note: Wa bridge test will be done in later steps')
+    
+    print('\n-- Web Dashboard --')
+    web_cfg = {
+        "host": prompt("Web server host", "https://wa-gateway.salmanmustapa.my.id"),
+        "port": int(prompt("Web server port", "80")),
+        "api_key": prompt("Web API key", "change-me-local-key")
+    }
 
     print('\n-- AI (Optional) --')
     use_ai = prompt('Enable AI (OpenAI) for summary & mitigation (y/n)? ','n')
@@ -115,9 +123,10 @@ def run_setup():
     cfg = {
         "sentinelone": {"base_url": base_url, "api_token": api_token, "webhook_secret": webhook_secret, "site_ids": []},
         "polling": {"enabled": True, "interval_seconds": interval, "last_success_ts": None},
-        "archive": {"path": "st orage/events", "enabled": True},
+        "archive": {"path": "storage/events", "enabled": True},
         "routing": {"severity_to_channels": {"CRITICAL": ["telegram", "whatsapp", "teams"], "HIGH": ["telegram", "whatsapp", "teams"], "MEDIUM": ["telegram"], "LOW": []}},
         "channels": {"telegram": telegram_cfg, "teams": teams_cfg, "whatsapp": wa_cfg},
+        "web": web_cfg,
         "ai": ai_cfg,
         "http": http_cfg
     }

@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <body>
+    <h2>WhatsApp</h2>
+    <form method="post" action="/whatsapp">
+      <label>Bridge base URL</label><br>
+      <input type="text" name="base_url" value="{{ wa.bridge.base_url | default('') }}"><br>
+      <label>Session name</label><br>
+      <input type="text" name="session_name" value="{{ wa.bridge.session_name | default('') }}"><br>
+      <button type="submit">Save</button>
+    </form>
+    <p><a href="/">Back</a></p>
+  </body>
+</html>

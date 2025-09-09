@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <body>
+    <h2>Config editor</h2>
+    <form method="post" action="/config">
+      <label>SentinelOne base URL</label><br>
+      <input type="text" name="sentinel_base_url" value="{{ config.sentinelone.base_url | default('') }}"><br>
+      <label>SentinelOne API token</label><br>
+      <input type="text" name="sentinel_api_token" value="{{ config.sentinelone.api_token | default('') }}"><br>
+      <label>WhatsApp base_url</label><br>
+      <input type="text" name="wa_base_url" value="{{ config.channels.whatsapp.bridge.base_url | default('') }}"><br>
+      <label>WhatsApp session name</label><br>
+      <input type="text" name="wa_session_name" value="{{ config.channels.whatsapp.bridge.session_name | default('') }}"><br>
+      <label>Polling interval (sec)</label><br>
+      <input type="number" name="polling_interval" value="{{ config.polling.interval_seconds | default(60) }}"><br>
+      <label>Web PIN</label><br>
+      <input type="text" name="web_pin" value="{{ config.web.pin | default('') }}"><br>
+      <button type="submit">Save</button>
+    </form>
+    <p><a href="/">Back</a></p>
+  </body>
+</html>

@@ -141,3 +141,40 @@ python3 run.py
    +-------------+
 
 ```
+
+---
+## Cara Penggunaan
+# python-monitor (SentinelOne Monitor)
+
+Ringkasan:
+- Web dashboard: `python run.py --web` (baca `config/config.json` untuk host/port)
+- Setup wizard: `python run.py --setup`
+- Polling loop: `python run.py --polling` (requires valid SentinelOne config)
+- Incoming webhook: POST JSON to `/send/alert` (FastAPI server) — saved to `storage/alerts/<date>/...`
+
+## Important files
+- `config/config.json` — semua konfigurasi (SentinelOne, channels, web, polling)
+- `src/webapp.py` — FastAPI app (routes: `/`, `/login`, `/config`, `/whatsapp`, `/send/alert`)
+- `src/config.py` — load_config() / save_config()
+- `notifier/telegram.py` — notif via Telegram
+- `run.py` — entrypoint
+
+## Quick start
+1. Run setup wizard if config missing:
+`python run.py --setup` isi SentinelOne base_url, API token, channels, web host/port, dan PIN.
+
+2. Start web dashboard:
+`python run.py --web` buka `http://<host>:<port>/` -> login with PIN (set during setup).  
+Edit WhatsApp config on `/whatsapp` and general settings on `/config`.
+
+3. Hook SentinelOne webhook to:
+`POST https://<your-monitor-host>/send/alert` The app saves the alert and will send Telegram notification if configured.
+
+## Templates
+Create folder `templates/` and add simple files:
+- `login.html`, `index.html`, `config.html`, `whatsapp.html`.
+(See examples in repository README or ask me to create them here.)
+
+## Notes
+- `config/config.json` **must not** be committed (keeps secrets).
+- If you want backup scheduler or advanced polling orchestration (systemd/pm2), I can add examples.

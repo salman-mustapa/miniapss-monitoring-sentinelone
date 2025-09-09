@@ -1,16 +1,16 @@
+# src/main.py
 import uvicorn
-from src.webapp import create_app
+from src.webapp import app
 from src.logger import init_logging
 from src.config import load_config
 
 def start_app():
-    #Load config
-    config = load_config()
-
-    #inisialisasi logging
+    # init logging early
     init_logging()
 
-    # start webapp (http server)
-    app = create_app()
+    cfg = load_config()
+    http_cfg = cfg.get("http") or cfg.get("web") or {}
+    host = http_cfg.get("host", "0.0.0.0")
+    port = int(http_cfg.get("port", 5000))
 
-    uvicorn.run(app, host="0.0.0.0", port=config.get("port", 8000))
+    uvicorn.run(app, host=host, port=port)
