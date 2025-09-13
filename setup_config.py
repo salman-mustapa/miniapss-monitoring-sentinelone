@@ -69,32 +69,36 @@ def run_setup():
     web_cfg = existing.get("web", {})
     pin_code = prompt("PIN untuk akses dashboard", web_cfg.get("pin", "1234"))
 
-    # --- Telegram
-    print("\n-- Channel Telegram --")
+    # --- Notification Channels (Multi-channel support)
+    print("\n-- Notification Channels --")
+    
+    # WhatsApp
+    print("\n-- WhatsApp --")
+    wa = existing.get("whatsapp", {})
+    wa_base_url = prompt("WhatsApp Gateway Base URL", wa.get("base_url", "http://localhost:5013"))
+    wa_session = prompt("WhatsApp Session Name", wa.get("session_name", "default"))
+    
+    # Telegram
+    print("\n-- Telegram --")
     tg = existing.get("channels", {}).get("telegram", {})
-    use_tg = prompt("Aktifkan Telegram? (y/n)", "y" if tg.get("enabled") else "n")
-    telegram_cfg = {"enabled": False, "bot_token": "", "chat_id": ""}
-    if use_tg.lower().startswith("y"):
-        telegram_cfg["enabled"] = True
-        telegram_cfg["bot_token"] = prompt("Telegram Bot Token", tg.get("bot_token", ""))
-        telegram_cfg["chat_id"] = prompt("Telegram Chat ID", tg.get("chat_id", ""))
-
-    # --- WhatsApp
-    print("\n-- Channel WhatsApp (Bridge) --")
-    wa = existing.get("channels", {}).get("whatsapp", {}).get("bridge", {})
-    use_wa = prompt("Aktifkan WhatsApp? (y/n)", "y" if existing.get("channels", {}).get("whatsapp", {}).get("enabled") else "n")
-    wa_cfg = {"enabled": False, "driver": "bridge", "bridge": {"base_url": "http://localhost:5013", "session_name": "default"}}
-    if use_wa.lower().startswith("y"):
-        wa_cfg["enabled"] = True
-        wa_cfg["bridge"]["base_url"] = prompt("WA Gateway Base URL", wa.get("base_url", "http://localhost:5013"))
-        wa_cfg["bridge"]["session_name"] = prompt("WA Session Name", wa.get("session_name", "default"))
+    tg_bot_token = prompt("Telegram Bot Token", tg.get("bot_token", ""))
+    
+    # Teams
+    print("\n-- Teams --")
+    teams = existing.get("channels", {}).get("teams", {})
+    teams_webhook = prompt("Teams Webhook URL", teams.get("webhook_url", ""))
 
     # --- Save config
     cfg = {
         "sentinelone": {"base_url": base_url, "api_token": api_token, "webhook_secret": webhook_secret, "site_ids": []},
         "polling": {"enabled": True, "interval_seconds": interval, "last_success_ts": None},
         "archive": {"path": "storage/events", "enabled": True},
-        "channels": {"telegram": telegram_cfg, "whatsapp": wa_cfg},
+        "whatsapp": {"base_url": wa_base_url, "session_name": wa_session},
+        "channels": {
+            "telegram": {"bot_token": tg_bot_token, "chats": [], "template": ""},
+            "teams": {"webhooks": [teams_webhook] if teams_webhook else [], "template": ""},
+            "whatsapp": {"session_name": wa_session, "recipients": [], "template": ""}
+        },
         "web": {"host": web_cfg.get("host", "0.0.0.0"), "port": web_cfg.get("port", 8899), "api_key": web_cfg.get("api_key", "change-me"), "pin": pin_code}
     }
 

@@ -124,12 +124,19 @@ class SentinelAPI:
             # WhatsApp (optional)
             wa = channels_cfg.get("whatsapp", {})
             if wa.get("enabled"):
-                bridge = wa.get("bridge", {})
                 notify_to = wa.get("notify_number")
+                notify_session = wa.get("notify_session", "default")
                 if notify_to:
-                    from src.whatsapp import WhatsAppBridge
-                    wb = WhatsAppBridge(bridge.get("base_url"))
-                    wb.send_message(notify_to, summary, session=bridge.get("session_name"))
+                    try:
+                        from src.whatsapp import WhatsAppBridge
+                        bridge = wa.get("bridge", {})
+                        base_url = bridge.get("base_url", "https://wa-gateway.salmanmustapa.my.id")
+                        session_name = bridge.get("session_name", "default")
+                        wb = WhatsAppBridge(base_url, session_name)
+                        wb.send_message(notify_to, summary, notify_session)
+                        log_success(f"WA notification sent to {notify_to} via session {notify_session}")
+                    except Exception as e:
+                        log_error(f"Failed to send WA notification: {e}")
         except Exception as e:
             log_error(f"Notification dispatch error: {e}")
 

@@ -175,6 +175,67 @@ Create folder `templates/` and add simple files:
 - `login.html`, `index.html`, `config.html`, `whatsapp.html`.
 (See examples in repository README or ask me to create them here.)
 
+## WhatsApp Multi-Session Integration
+
+### Features
+- **Multiple Sessions**: Create and manage multiple WhatsApp sessions
+- **Session-Aware Operations**: All WhatsApp operations support session selection
+- **QR Code Display**: Visual QR code display for easy scanning
+- **Session Status**: Real-time session status indicators
+- **Conditional UI**: Smart UI flow based on session availability
+
+### WhatsApp Gateway API Format
+
+The system integrates with WhatsApp gateway using the following API format:
+
+**Send Message**:
+```bash
+curl -X POST http://localhost:5013/api/kirim-pesan \
+  -H "Content-Type: application/json" \
+  -d '{"number":"120363220075343815@g.us","message":"Halo Group!","session":"testing"}'
+```
+
+**Get Logs**:
+```bash
+# All logs for a session
+curl http://localhost:5013/api/logs?session=gateway
+
+# Logs for specific target in session
+curl http://localhost:5013/api/logs/6282154488769?session=gateway
+```
+
+### Session Management Workflow
+
+1. **Initial Setup**: If no sessions exist, the UI shows configuration form
+2. **Session Creation**: Auto-creates session after saving configuration
+3. **Session Selection**: Select active session for operations
+4. **QR Code Scanning**: Display QR as image for WhatsApp connection
+5. **Message Sending**: Session-aware message dispatch
+
+### Enhanced API Endpoints
+
+- `GET /api/wa/sessions` - List all sessions with status
+- `POST /api/wa/connect` - Create/connect session
+- `GET /api/wa/qr?session=<name>` - Get QR code for session
+- `GET /api/wa/groups?session=<name>` - List groups in session
+- `GET /api/wa/fetch-groups?session=<name>` - Fetch groups from WhatsApp
+- `POST /api/wa/send` - Send message (with session parameter)
+- `GET /api/wa/logs?session=<name>` - Get logs for session
+- `GET /api/wa/logs/<target>?session=<name>` - Get logs for specific target
+
+### Configuration Fields
+- `bridge_url`: WhatsApp gateway base URL
+- `session_name`: Default session name
+- `notify_number`: Phone number/group for notifications
+- `notify_session`: Session to use for notifications
+
+### Multi-Session Benefits
+- **Isolation**: Separate WhatsApp accounts for different purposes
+- **Reliability**: Backup sessions if primary session fails
+- **Organization**: Different sessions for different teams/groups
+- **Scalability**: Handle multiple WhatsApp integrations simultaneously
+
 ## Notes
 - `config/config.json` **must not** be committed (keeps secrets).
+- WhatsApp multi-session support requires external WhatsApp gateway service
 - If you want backup scheduler or advanced polling orchestration (systemd/pm2), I can add examples.

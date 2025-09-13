@@ -10,6 +10,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG_ALL = os.path.join(LOG_DIR, "all.log")
 LOG_ERROR = os.path.join(LOG_DIR, "error.log")
 LOG_SUCCESS = os.path.join(LOG_DIR, "success.log")
+LOG_INFO = os.path.join(LOG_DIR, "info.log")
 
 # custom level SUCCESS
 SUCCESS_LEVEL_NUM = 25
@@ -42,16 +43,25 @@ def init_logging():
     all_handler.setFormatter(formatter)
     logger.addHandler(all_handler)
 
-    # error log
+    # error log (only errors)
     error_handler = logging.FileHandler(LOG_ERROR, encoding='utf-8')
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(formatter)
+    error_handler.addFilter(lambda record: record.levelno >= logging.ERROR)
     logger.addHandler(error_handler)
 
-    # success log (custom level)
+    # info log (only info level)
+    info_handler = logging.FileHandler(LOG_INFO, encoding='utf-8')
+    info_handler.setLevel(logging.INFO)
+    info_handler.setFormatter(formatter)
+    info_handler.addFilter(lambda record: record.levelno == logging.INFO)
+    logger.addHandler(info_handler)
+
+    # success log (only success level)
     success_handler = logging.FileHandler(LOG_SUCCESS, encoding='utf-8')
     success_handler.setLevel(SUCCESS_LEVEL_NUM)
     success_handler.setFormatter(formatter)
+    success_handler.addFilter(lambda record: record.levelno == SUCCESS_LEVEL_NUM)
     logger.addHandler(success_handler)
 
     # console

@@ -2,58 +2,576 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Sentinel Monitor - Dashboard</title>
+  <title>SentinelOne Monitor - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
   <style>
-    body { background:#0b0f10; color:#8aff9b; font-family: "Courier New", monospace; }
-    .card { background:#071012; border:1px solid #0f4; color: #0f4}
-    a.btn { font-family: monospace; }
-    .panel { background:#00110a; border:1px solid #063; padding:12px; border-radius:6px; }
+    :root {
+      --bg-primary: #0a0e0f;
+      --bg-secondary: #0f1419;
+      --bg-tertiary: #1a1f24;
+      --accent-green: #00ff41;
+      --accent-cyan: #00ffff;
+      --text-primary: #00ff41;
+      --text-secondary: #8aff9b;
+      --border-color: #0f4;
+    }
+    
+    body { 
+      background: var(--bg-primary); 
+      color: var(--text-primary); 
+      font-family: "Courier New", monospace; 
+      margin: 0;
+      overflow-x: hidden;
+    }
+    
+    .hacker-header {
+      background: linear-gradient(90deg, var(--bg-secondary), var(--bg-tertiary));
+      border-bottom: 2px solid var(--accent-green);
+      padding: 15px 20px;
+      box-shadow: 0 2px 10px rgba(0, 255, 65, 0.3);
+    }
+    
+    .hacker-title {
+      color: var(--accent-green);
+      font-size: 1.8rem;
+      font-weight: bold;
+      text-shadow: 0 0 10px var(--accent-green);
+      margin: 0;
+    }
+    
+    .nav-tabs {
+      border-bottom: 2px solid var(--accent-green);
+      background: var(--bg-secondary);
+      margin: 0;
+    }
+    
+    .nav-tabs .nav-link {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      padding: 15px 25px;
+      margin-right: 2px;
+      transition: all 0.3s ease;
+    }
+    
+    .nav-tabs .nav-link:hover {
+      color: var(--accent-green);
+      background: rgba(0, 255, 65, 0.1);
+      text-shadow: 0 0 5px var(--accent-green);
+    }
+    
+    .nav-tabs .nav-link.active {
+      background: var(--accent-green);
+      color: var(--bg-primary);
+      border-bottom: 3px solid var(--accent-cyan);
+      text-shadow: none;
+    }
+    
+    .tab-content {
+      background: var(--bg-primary);
+      min-height: calc(100vh - 140px);
+      padding: 20px;
+    }
+    
+    .hacker-card {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0, 255, 65, 0.2);
+      transition: all 0.3s ease;
+    }
+    
+    .hacker-card:hover {
+      box-shadow: 0 6px 20px rgba(0, 255, 65, 0.4);
+      transform: translateY(-2px);
+    }
+    
+    .form-control, .form-select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-family: "Courier New", monospace;
+    }
+    
+    .form-control:focus, .form-select:focus {
+      background: var(--bg-secondary);
+      border-color: var(--accent-green);
+      color: var(--text-primary);
+      box-shadow: 0 0 0 0.2rem rgba(0, 255, 65, 0.25);
+    }
+    
+    .btn-hacker {
+      background: linear-gradient(45deg, var(--accent-green), var(--accent-cyan));
+      border: none;
+      color: var(--bg-primary);
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      padding: 8px 16px;
+      border-radius: 4px;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-hacker:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 15px rgba(0, 255, 65, 0.5);
+      color: var(--bg-primary);
+    }
+    
+    .terminal-output {
+      background: #000;
+      color: var(--accent-green);
+      font-family: "Courier New", monospace;
+      padding: 15px;
+      border-radius: 8px;
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--accent-green);
+      white-space: pre-wrap;
+      box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.3);
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-online { background: var(--accent-green); box-shadow: 0 0 5px var(--accent-green); }
+    .status-offline { background: #ff4444; box-shadow: 0 0 5px #ff4444; }
+    .status-warning { background: #ffaa00; box-shadow: 0 0 5px #ffaa00; }
+    
+    .logout-btn {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: #ff4444;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: "Courier New", monospace;
+      transition: all 0.3s ease;
+    }
+    
+    .logout-btn:hover {
+      background: #ff6666;
+      transform: scale(1.05);
+    }
+
+    .expand-section {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 15px;
+      overflow: hidden;
+    }
+
+    .expand-header {
+      background: var(--bg-tertiary);
+      padding: 12px 15px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .expand-header:hover {
+      background: var(--bg-secondary);
+      box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+    }
+
+    .expand-content {
+      padding: 15px;
+      display: none;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .expand-content.show {
+      display: block;
+    }
+
+    .file-item {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .file-item:hover {
+      background: var(--bg-secondary);
+      box-shadow: 0 2px 8px rgba(0, 255, 65, 0.3);
+    }
+
+    .file-info {
+      flex-grow: 1;
+    }
+
+    .file-name {
+      font-weight: bold;
+      color: var(--accent-green);
+    }
+
+    .file-meta {
+      font-size: 0.8em;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .file-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-box {
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body class="p-3">
   <div class="container">
     <div class="d-flex justify-content-between mb-3">
-      <h3>🖥️ Sentinel Monitor</h3>
+      <h3><i class="fas fa-shield-alt"></i> Sentinel Monitor</h3>
       <div>
-        <a href="/config" class="btn btn-sm btn-outline-success">Config</a>
-        <a href="/whatsapp" class="btn btn-sm btn-outline-info">WhatsApp</a>
-        <a href="/backups" class="btn btn-sm btn-outline-warning">Backups</a>
-        <a href="/logs" class="btn btn-sm btn-outline-secondary">Logs</a>
-        <a href="/logout" class="btn btn-sm btn-danger">Logout</a>
+        <a href="/notifications" class="btn btn-sm btn-outline-info"><i class="fas fa-bell"></i> Notifications</a>
+        <a href="/management" class="btn btn-sm btn-outline-warning"><i class="fas fa-cogs"></i> Management</a>
+        <a href="/logout" class="btn btn-sm btn-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
       </div>
     </div>
 
     <div class="row g-3">
       <div class="col-md-6">
         <div class="card p-3">
-          <h5>System</h5>
+          <h5><i class="fas fa-server"></i> System Status</h5>
           <div class="panel">
-            <div>Polling interval: <strong>{{ polling.interval_seconds }}</strong> sec</div>
-            <div>Telegram: <strong>{{ 'enabled' if channels.telegram.enabled else 'disabled' }}</strong></div>
-            <div>Teams: <strong>{{ 'enabled' if channels.teams.enabled else 'disabled' }}</strong></div>
-            <div>WhatsApp: <strong>{{ 'enabled' if channels.whatsapp.enabled else 'disabled' }}</strong></div>
+            <div><i class="fas fa-clock"></i> Polling interval: <strong>{{ polling.interval_seconds or 60 }}</strong> sec</div>
+            <div><i class="fab fa-telegram"></i> Telegram: <strong>{{ 'enabled' if channels.telegram.enabled else 'disabled' }}</strong></div>
+            <div><i class="fab fa-microsoft"></i> Teams: <strong>{{ 'enabled' if channels.teams.enabled else 'disabled' }}</strong></div>
+            <div><i class="fab fa-whatsapp"></i> WhatsApp: <strong>{{ 'configured' if config.get('whatsapp', {}).get('base_url') else 'not configured' }}</strong></div>
           </div>
         </div>
       </div>
 
       <div class="col-md-6">
         <div class="card p-3">
-          <h5>Quick actions</h5>
-          <div class="d-flex gap-2">
-            <a href="/whatsapp" class="btn btn-sm btn-dark" style="color: #0f4">WhatsApp</a>
-            <a href="/config" class="btn btn-sm btn-dark" style="color: #0f4">Edit Config</a>
-            <a href="/backups" class="btn btn-sm btn-dark" style="color: #0f4">Backups</a>
-            <a href="/logs" class="btn btn-sm btn-dark" style="color: #0f4">Logs</a>
+          <div class="quick-actions">
+            <h6>Quick Actions</h6>
+            <div class="d-flex gap-2 flex-wrap">
+              <a href="/config" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-cog"></i> Settings
+              </a>
+              <a href="/whatsapp" class="btn btn-outline-success btn-sm">
+                <i class="fab fa-whatsapp"></i> WhatsApp
+              </a>
+              <button class="btn btn-outline-warning btn-sm" onclick="testNotifications()">
+                <i class="fas fa-paper-plane"></i> Test Notifications
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="mt-3 card p-3">
-      <h6>Recent alerts (storage/alerts)</h6>
-      <p>Use storage/alerts folder to see saved alerts.</p>
+    <div class="row g-3 mt-2">
+      <div class="col-md-6">
+        <div class="card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5><i class="fas fa-file-alt"></i> Recent Logs</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="refreshLogs()">
+              <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+          </div>
+          <div id="logs-container">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading logs...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5><i class="fas fa-archive"></i> Recent Backups</h5>
+            <div>
+              <input type="text" id="backupSearch" class="form-control form-control-sm d-inline-block me-2" style="width: 150px;" placeholder="Search date...">
+              <button class="btn btn-sm btn-outline-secondary" onclick="refreshBackups()">
+                <i class="fas fa-sync-alt"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <div id="backups-container">
+            <div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading backups...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Process Output Log -->
+    <div class="row g-3 mt-2">
+      <div class="col-12">
+        <div class="card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5><i class="fas fa-terminal"></i> Process Output</h5>
+            <div>
+              <button class="btn btn-sm btn-outline-secondary" onclick="clearProcessLog()">
+                <i class="fas fa-trash"></i> Clear
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="toggleAutoScroll()">
+                <i class="fas fa-arrow-down"></i> Auto-scroll: <span id="autoScrollStatus">ON</span>
+              </button>
+            </div>
+          </div>
+          <div id="process-log" style="background: #000; color: #0f0; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; height: 200px; overflow-y: auto; border: 1px solid #0f4; white-space: pre-wrap;"></div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <script>
+    async function refreshLogs() {
+      const container = document.getElementById('logs-container');
+      container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading logs...</div>';
+      
+      try {
+        const response = await fetch('/logs');
+        const data = await response.json();
+        
+        if (data.success && data.files && data.files.length > 0) {
+          container.innerHTML = data.files.slice(0, 5).map(file => `
+            <div class="log-item">
+              <div>
+                <i class="fas fa-file-alt"></i> 
+                <strong>${file.name}</strong>
+              </div>
+              <div>
+                <span class="file-size">${formatFileSize(file.size)}</span>
+                <a href="/logs/download?path=${encodeURIComponent(file.path)}" class="btn btn-sm btn-outline-success ms-2">
+                  <i class="fas fa-download"></i>
+                </a>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<div class="empty">No log files found</div>';
+        }
+      } catch (e) {
+        container.innerHTML = '<div class="error"><i class="fas fa-exclamation-triangle"></i> Error loading logs</div>';
+      }
+    }
+
+    async function refreshBackups() {
+      const container = document.getElementById('recent-backups');
+      
+      // Show loading state
+      container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading backups...</div>';
+      
+      try {
+        const search = document.getElementById('backupSearch')?.value || '';
+        const params = new URLSearchParams({ limit: 100 });
+        if (search) params.append('search', search);
+        
+        const res = await fetch(`/api/storage/all?${params}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          if (data.folders && Object.keys(data.folders).length > 0) {
+            let html = '';
+            
+            // Sort folders by name
+            const sortedFolders = Object.keys(data.folders).sort();
+            
+            sortedFolders.forEach(folderName => {
+              const files = data.folders[folderName];
+              
+              // Show folder even if empty
+              html += `
+                <div class="backup-group">
+                  <div class="group-header" onclick="toggleBackupGroup('${folderName}')">
+                    <i class="fas fa-folder me-2"></i>
+                    ${folderName.charAt(0).toUpperCase() + folderName.slice(1)} (${files ? files.length : 0} files)
+                    <i class="fas fa-chevron-down float-end"></i>
+                  </div>
+                  <div id="group-${folderName}" class="group-content">
+              `;
+              
+              if (files && files.length > 0) {
+                // Sort files by modification date (newest first)
+                files.sort((a, b) => new Date(b.modified * 1000) - new Date(a.modified * 1000));
+                
+                html += files.map(file => `
+                  <div class="backup-item">
+                    <div>
+                      <strong>${file.name}</strong>
+                      <br>
+                      <small class="file-date">${new Date(file.modified * 1000).toLocaleString()}</small>
+                    </div>
+                    <div>
+                      <span class="file-size me-2">${formatFileSize(file.size)}</span>
+                      <button class="btn btn-sm btn-outline-primary" onclick="downloadBackup('${file.path}')">
+                        <i class="fas fa-download"></i>
+                      </button>
+                    </div>
+                  </div>
+                `).join('');
+              } else {
+                html += '<div class="empty-folder">No files in this folder</div>';
+              }
+              
+              html += '</div></div>';
+            });
+            
+            container.innerHTML = html;
+          } else {
+            container.innerHTML = '<div class="empty">No storage folders found</div>';
+          }
+        } else {
+          container.innerHTML = '<div class="error">Failed to load storage data</div>';
+        }
+      } catch (e) {
+        console.error('Error loading backups:', e);
+        container.innerHTML = '<div class="error"><i class="fas fa-exclamation-triangle"></i> Error loading storage</div>';
+      }
+    }
+
+    function toggleBackupGroup(type) {
+      const content = document.getElementById(`group-${type}`);
+      const icon = content.previousElementSibling.querySelector('.fa-chevron-down, .fa-chevron-up');
+      
+      if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.className = 'fas fa-chevron-down float-end';
+      } else {
+        content.style.display = 'none';
+        icon.className = 'fas fa-chevron-up float-end';
+      }
+    }
+
+    function downloadBackup(path) {
+      window.open(`/api/backups/download?path=${encodeURIComponent(path)}`, '_blank');
+    }
+
+    let processLogContent = '';
+    let autoScroll = true;
+
+    function clearProcessLog() {
+      processLogContent = '';
+      document.getElementById('process-log').textContent = '';
+    }
+
+    function toggleAutoScroll() {
+      autoScroll = !autoScroll;
+      document.getElementById('autoScrollStatus').textContent = autoScroll ? 'ON' : 'OFF';
+    }
+
+    function appendToProcessLog(message) {
+      processLogContent += message + '\n';
+      const logElement = document.getElementById('process-log');
+      logElement.textContent = processLogContent;
+      
+      if (autoScroll) {
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+    }
+
+    // Start process log updates
+    function startProcessLogUpdates() {
+      setInterval(async () => {
+        try {
+          const response = await fetch('/api/processes/logs');
+          const data = await response.json();
+          
+          if (data.success && data.logs) {
+            data.logs.forEach(log => {
+              if (!processLogContent.includes(log)) {
+                appendToProcessLog(log);
+              }
+            });
+          }
+        } catch (error) {
+          // Silently handle errors
+        }
+      }, 3000);
+    }
+
+    async function testNotifications() {
+      try {
+        const button = event.target;
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+        button.disabled = true;
+        
+        // Set timeout to prevent infinite loading
+        const timeoutId = setTimeout(() => {
+          button.innerHTML = originalText;
+          button.disabled = false;
+          alert('Test timeout: Request took too long');
+        }, 15000); // 15 second timeout
+        
+        const response = await fetch('/api/test-notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        clearTimeout(timeoutId);
+        const data = await response.json();
+        
+        if (data.success) {
+          let message = 'Test Results:\n\n';
+          if (data.results.success.length > 0) {
+            message += '✅ Successful:\n' + data.results.success.join('\n') + '\n\n';
+          }
+          if (data.results.errors.length > 0) {
+            message += '❌ Failed:\n' + data.results.errors.join('\n');
+          }
+          if (data.results.success.length === 0 && data.results.errors.length === 0) {
+            message = 'No notification channels configured.';
+          }
+          alert(message);
+        } else {
+          alert('Test failed: ' + data.error);
+        }
+      } catch (error) {
+        alert('Test failed: ' + error.message);
+      } finally {
+        const button = event.target;
+        button.innerHTML = originalText;
+        button.disabled = false;
+      }
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      refreshLogs();
+      refreshBackups();
+      startProcessLogUpdates();
+      
+      // Add search functionality
+      document.getElementById('backupSearch').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          refreshBackups();
+        }
+      });
+    });
+  </script>
 </body>
 </html>

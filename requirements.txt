@@ -1,13 +1,7 @@
-# requests>=2.28			# for http communication
-# Flask>=2.0 			    # for web dashboard
-# python-dateutil			# for date
-# fastapi                 # fof api http
-# uvicorn
-
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 requests==2.32.3
 loguru==0.7.2
-python-dotenv==1.0.1
 python-multipart
 jinja2
+psutil==5.9.8

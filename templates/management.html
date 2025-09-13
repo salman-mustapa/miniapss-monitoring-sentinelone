@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Management - SentinelOne Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0f4;
+            --bg-dark: #0b0f10;
+            --bg-card: #071012;
+            --bg-panel: #00110a;
+            --text-primary: #8aff9b;
+            --text-secondary: #6a6;
+            --border: #063;
+        }
+        
+        body {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: "Courier New", monospace;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .terminal {
+            background: #000;
+            color: #0f0;
+            font-family: "Courier New", monospace;
+            padding: 15px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--primary);
+            white-space: pre-wrap;
+        }
+        
+        .process-item {
+            background: var(--bg-panel);
+            border: 1px solid var(--primary);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .process-item h6 {
+            color: var(--primary);
+            font-weight: bold;
+        }
+        
+        .backup-item {
+            background: var(--bg-panel);
+            border: 1px solid var(--primary);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-primary);
+        }
+        
+        .backup-item strong {
+            color: var(--primary);
+        }
+        
+        .status-running { color: #0f4; }
+        .status-stopped { color: #f44; }
+        .status-pending { color: #fa4; }
+        
+        .form-control, .form-select {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background: var(--bg-panel);
+            border-color: var(--primary);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.2rem rgba(0, 255, 68, 0.25);
+        }
+        
+        .form-control::placeholder {
+            color: #6a6;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #000;
+        }
+        
+        .btn-outline-primary {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .btn-outline-primary:hover {
+            background: var(--primary);
+            color: #000;
+        }
+        
+        .text-muted {
+            color: var(--text-secondary) !important;
+        }
+        
+        .badge {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3><i class="fas fa-cogs me-2"></i>System Management</h3>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
+        </div>
+
+        <!-- Process Management -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-play-circle me-2"></i>Process Management
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Polling Configuration</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Polling Interval</label>
+                                    <select id="pollingInterval" class="form-select">
+                                        <option value="60">1 minute</option>
+                                        <option value="300">5 minutes</option>
+                                        <option value="600">10 minutes</option>
+                                        <option value="1800">30 minutes</option>
+                                        <option value="3600">1 hour</option>
+                                        <option value="7200">2 hours</option>
+                                    </select>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-success" onclick="startPolling()">
+                                        <i class="fas fa-play me-2"></i>Start Polling
+                                    </button>
+                                    <button class="btn btn-danger" onclick="stopProcess('polling')">
+                                        <i class="fas fa-stop me-2"></i>Stop
+                                    </button>
+                                    <button class="btn btn-info" onclick="testConnection('sentinel')">
+                                        <i class="fas fa-plug me-2"></i>Test Connection
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Backup Configuration</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Backup Frequency</label>
+                                    <select id="backupFrequency" class="form-select">
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-warning" onclick="startBackup()">
+                                        <i class="fas fa-archive me-2"></i>Start Backup
+                                    </button>
+                                    <button class="btn btn-danger" onclick="stopProcess('backup')">
+                                        <i class="fas fa-stop me-2"></i>Stop
+                                    </button>
+                                    <button class="btn btn-info" onclick="testConnection('backup')">
+                                        <i class="fas fa-hdd me-2"></i>Test Storage
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Running Processes -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tasks me-2"></i>Running Processes
+                        </h5>
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshProcesses()">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="processes-container">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-spinner fa-spin me-2"></i>Loading processes...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Output -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-terminal me-2"></i>Process Output
+                        </h5>
+                        <div>
+                            <button class="btn btn-outline-primary btn-sm" onclick="clearTerminal()">
+                                <i class="fas fa-trash me-2"></i>Clear
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm" onclick="toggleAutoScroll()">
+                                <i class="fas fa-arrow-down me-2"></i>Auto-scroll: <span id="autoScrollStatus">ON</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="terminal" class="terminal"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup Files Management -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-archive me-2"></i>Backup Files
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <input type="text" id="searchDate" class="form-control" placeholder="Search by date (YYYY-MM-DD)">
+                            </div>
+                            <div class="col-md-3">
+                                <select id="fileType" class="form-select">
+                                    <option value="">All Types</option>
+                                    <option value="events">Events</option>
+                                    <option value="alerts">Alerts</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-primary w-100" onclick="searchBackups()">
+                                    <i class="fas fa-search me-2"></i>Search
+                                </button>
+                            </div>
+                        </div>
+                        <div id="backups-container">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-spinner fa-spin me-2"></i>Loading backup files...
+                            </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <button id="loadMoreBtn" class="btn btn-outline-primary" onclick="loadMoreBackups()" style="display: none;">
+                                <i class="fas fa-plus me-2"></i>Load More
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentOffset = 0;
+        let autoScroll = true;
+        let processes = {};
+        let terminalContent = '';
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConfig();
+            refreshProcesses();
+            loadBackups();
+            startTerminalUpdates();
+        });
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                
+                const polling = config.polling || {};
+                document.getElementById('pollingInterval').value = polling.interval_seconds || 60;
+                
+                const backup = config.backup || {};
+                document.getElementById('backupFrequency').value = backup.frequency || 'daily';
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        async function startPolling() {
+            try {
+                const interval = document.getElementById('pollingInterval').value;
+                
+                const response = await fetch('/api/processes/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'polling',
+                        interval: parseInt(interval)
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Starting polling process with ${interval}s interval...`);
+                    refreshProcesses();
+                } else {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Failed to start polling: ${data.error}`);
+                }
+            } catch (error) {
+                appendToTerminal(`[${new Date().toLocaleTimeString()}] Error starting polling: ${error.message}`);
+            }
+        }
+
+        async function startBackup() {
+            try {
+                const frequency = document.getElementById('backupFrequency').value;
+                
+                const response = await fetch('/api/processes/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'backup',
+                        frequency: frequency
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Starting backup process (${frequency})...`);
+                    refreshProcesses();
+                } else {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Failed to start backup: ${data.error}`);
+                }
+            } catch (error) {
+                appendToTerminal(`[${new Date().toLocaleTimeString()}] Error starting backup: ${error.message}`);
+            }
+        }
+
+        async function stopProcess(type) {
+            try {
+                const response = await fetch('/api/processes/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Stopping ${type} process...`);
+                    refreshProcesses();
+                } else {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] Failed to stop ${type}: ${data.error}`);
+                }
+            } catch (error) {
+                appendToTerminal(`[${new Date().toLocaleTimeString()}] Error stopping ${type}: ${error.message}`);
+            }
+        }
+
+        async function testConnection(type) {
+            try {
+                appendToTerminal(`[${new Date().toLocaleTimeString()}] Testing ${type} connection...`);
+                
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] ✅ ${type} connection successful`);
+                } else {
+                    appendToTerminal(`[${new Date().toLocaleTimeString()}] ❌ ${type} connection failed: ${data.error}`);
+                }
+            } catch (error) {
+                appendToTerminal(`[${new Date().toLocaleTimeString()}] ❌ ${type} connection error: ${error.message}`);
+            }
+        }
+
+        async function refreshProcesses() {
+            try {
+                const response = await fetch('/api/processes');
+                const data = await response.json();
+                
+                if (data.success) {
+                    processes = data.processes;
+                    renderProcesses();
+                }
+            } catch (error) {
+                console.error('Failed to refresh processes:', error);
+            }
+        }
+
+        function renderProcesses() {
+            const container = document.getElementById('processes-container');
+            
+            if (Object.keys(processes).length === 0) {
+                container.innerHTML = '<div class="text-muted text-center">No running processes</div>';
+                return;
+            }
+            
+            container.innerHTML = Object.entries(processes).map(([type, process]) => `
+                <div class="process-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <i class="fas fa-${type === 'polling' ? 'sync-alt' : 'archive'} me-2"></i>
+                                ${type.charAt(0).toUpperCase() + type.slice(1)} Process
+                            </h6>
+                            <small class="text-muted">
+                                PID: ${process.pid} | Started: ${new Date(process.started).toLocaleString()}
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <span class="status-${process.status}">${process.status.toUpperCase()}</span>
+                            <button class="btn btn-sm btn-outline-danger ms-2" onclick="stopProcess('${type}')">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function appendToTerminal(message) {
+            terminalContent += message + '\n';
+            const terminal = document.getElementById('terminal');
+            terminal.textContent = terminalContent;
+            
+            if (autoScroll) {
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        }
+
+        function clearTerminal() {
+            terminalContent = '';
+            document.getElementById('terminal').textContent = '';
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.getElementById('autoScrollStatus').textContent = autoScroll ? 'ON' : 'OFF';
+        }
+
+        function startTerminalUpdates() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/processes/logs');
+                    const data = await response.json();
+                    
+                    if (data.success && data.logs) {
+                        data.logs.forEach(log => {
+                            if (!terminalContent.includes(log)) {
+                                appendToTerminal(log);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    // Silently handle errors to avoid spam
+                }
+            }, 2000);
+        }
+
+        async function loadBackups() {
+            try {
+                const search = document.getElementById('searchDate').value;
+                const type = document.getElementById('fileType').value;
+                
+                const params = new URLSearchParams({
+                    limit: 50
+                });
+                
+                if (search) params.append('search', search);
+                
+                const response = await fetch(`/api/storage/all?${params}`);
+                const data = await response.json();
+                
+                if (data.success && data.folders && Object.keys(data.folders).length > 0) {
+                    const container = document.getElementById('backups-container');
+                    let allFiles = [];
+                    
+                    // Flatten all files with folder prefix
+                    Object.entries(data.folders).forEach(([folderName, files]) => {
+                        files.forEach(file => {
+                            allFiles.push({
+                                ...file,
+                                displayName: `${folderName}/${file.name}`,
+                                folder: folderName
+                            });
+                        });
+                    });
+                    
+                    // Filter by type if specified
+                    if (type) {
+                        allFiles = allFiles.filter(file => file.folder === type);
+                    }
+                    
+                    // Sort by modification date (newest first)
+                    allFiles.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+                    
+                    if (allFiles.length > 0) {
+                        const html = allFiles.map(file => `
+                            <div class="backup-item">
+                                <div>
+                                    <strong>${file.displayName}</strong>
+                                    <br>
+                                    <small class="file-date">${new Date(file.modified * 1000).toLocaleString()}</small>
+                                </div>
+                                <div>
+                                    <span class="file-size me-2">${formatFileSize(file.size)}</span>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="downloadBackup('${file.path}')">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = '<div class="text-muted text-center">No files found</div>';
+                    }
+                } else {
+                    document.getElementById('backups-container').innerHTML = '<div class="text-muted text-center">No storage folders found</div>';
+                }
+            } catch (error) {
+                console.error('Failed to load backups:', error);
+                document.getElementById('backups-container').innerHTML = '<div class="text-danger text-center">Error loading backup files</div>';
+            }
+        }
+
+        function renderBackups(backups, replace = true) {
+            const container = document.getElementById('backups-container');
+            
+            if (backups.length === 0 && replace) {
+                container.innerHTML = '<div class="text-muted text-center">No backup files found</div>';
+                return;
+            }
+            
+            const html = backups.map(backup => `
+                <div class="backup-item">
+                    <div>
+                        <i class="fas fa-${backup.type === 'events' ? 'calendar-alt' : 'exclamation-triangle'} me-2"></i>
+                        <strong>${backup.name}</strong>
+                        <span class="badge bg-${backup.type === 'events' ? 'info' : 'warning'} ms-2">${backup.type}</span>
+                        <br>
+                        <small class="text-muted">${new Date(backup.modified).toLocaleString()}</small>
+                    </div>
+                    <div>
+                        <span class="text-muted me-3">${formatFileSize(backup.size)}</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="downloadBackup('${backup.path}')">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            
+            if (replace) {
+                container.innerHTML = html;
+            } else {
+                container.innerHTML += html;
+            }
+        }
+
+        function searchBackups() {
+            currentOffset = 0;
+            loadBackups();
+        }
+
+        function loadMoreBackups() {
+            currentOffset += 20;
+            loadBackups();
+        }
+
+        function downloadBackup(path) {
+            window.open(`/api/backups/download?path=${encodeURIComponent(path)}`, '_blank');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

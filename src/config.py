@@ -15,12 +15,12 @@ def load_config() -> Dict[str, Any]:
     try:
         if not CONFIG_PATH.exists():
             # no config yet — return empty dict and let caller decide to run setup
-            print(f"⚠️ config not found at {CONFIG_PATH}. Create it with `python run.py --setup` or via web /config.")
+            print(f"[WARNING] config not found at {CONFIG_PATH}. Create it with `python run.py --setup` or via web /config.")
             return {}
         with CONFIG_PATH.open("r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"❌ Failed to read config: {e}")
+        print(f"[ERROR] Failed to read config: {e}")
         return {}
 
 
@@ -32,7 +32,7 @@ def save_config(data: Dict[str, Any]) -> None:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with CONFIG_PATH.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        print(f"✅ Config saved to {CONFIG_PATH}")
+        print(f"[SUCCESS] Config saved to {CONFIG_PATH}")
     except Exception as e:
-        print(f"❌ Failed to save config: {e}")
+        print(f"[ERROR] Failed to save config: {e}")
         raise
