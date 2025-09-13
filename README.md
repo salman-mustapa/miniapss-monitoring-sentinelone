@@ -1,241 +1,297 @@
-# Mini Apps Monitoring SentinelOne
+# SentinelOne Monitor v2.0
 
-## 🛠️ Teknologi yang Digunakan
+A comprehensive security monitoring system that integrates with SentinelOne API to provide real-time threat detection, multi-channel notifications, and advanced management capabilities.
 
-- `Python 3.10+` → bahasa utama.
+## Features
 
-- `Flask / FastAPI` → web dashboard + webhook receiver.
+### 🛡️ Core Security Monitoring
+- **Real-time SentinelOne API Integration**: Continuous polling for threats and security events
+- **Webhook Alert Receiver**: Direct integration with SentinelOne webhooks at `/send/alert`
+- **Event Backup & Archiving**: Automatic backup of events and alerts to JSONL files
+- **Advanced Threat Analysis**: Comprehensive threat data processing and visualization
 
-- `OpenAI API` → untuk AI summary & mitigasi (dengan masking data).
+### 🔔 Multi-Channel Notifications
+- **Telegram Bot Integration**: Send alerts via Telegram with bot token and chat ID
+- **Microsoft Teams Integration**: Webhook-based notifications to Teams channels
+- **WhatsApp Gateway**: Integration with WhatsApp bridge for messaging
+- **Connection Testing**: Built-in connection testing for all notification channels
 
-- `JSON file` → backup event harian & config.
+### 🎛️ Web Dashboard
+- **Unified Interface**: Single-page application with tabbed interface
+- **Hacker-Style UI**: Dark theme with terminal aesthetics and green/cyan accents
+- **Real-time Logs**: Expandable log viewer with search and filtering
+- **File Management**: Browse and download backup files organized by folders
+- **Configuration Management**: Web-based configuration for all system components
 
-- `Logging (Python logging)` → simpan error/success.
+### ⚙️ Advanced Configuration
+- **SentinelOne Advanced Features**: Dedicated page for API endpoint testing
+- **Polling Configuration**: Customizable polling intervals and parameters
+- **Backup Management**: Manual and automated backup execution
+- **Endpoint Management**: SentinelOne endpoint configuration and testing
 
-- `Requests / httpx` → komunikasi dengan SentinelOne API & webhook (Telegram, Teams, WA).
+## Installation
 
-- `WhatsApp (self-hosted via WA Web protocol / Baileys Python binding)` → kirim pesan ke grup.
+### Prerequisites
+- Python 3.8+
+- SentinelOne API access
+- Network connectivity for notifications (Telegram, Teams, WhatsApp)
 
-- `Telegram Bot API` → notifikasi cepat.
+### Setup
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd miniapps-monitoring
+   ```
 
-- `Microsoft Teams Webhook` → untuk tim manajemen.
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
----
-## 📌 Rangkuman Sistem
+3. **Run initial setup**:
+   ```bash
+   python run.py --setup
+   ```
+   This will create the initial `config/config.json` file with default settings.
 
--  Config Management → semua setting (Telegram, WA, Teams, AI, SentinelOne) disimpan di config.json.
+## Usage
 
-- `Event Collection`
+### Command Line Options
 
-- `Polling SentinelOne API (per menit).`
+```bash
+# Start web dashboard (recommended)
+python run.py --web
 
-- `Webhook dari SentinelOne (langsung push ke sistem kita).`
+# Run interactive setup wizard
+python run.py --setup
 
-- `Backup Engine` → event disimpan di storage/events/YYYY-MM-DD.json (supaya aman setelah 14 hari data dihapus di SentinelOne).
+# Start polling service only
+python run.py --polling
 
-- `Sanitizer` → masking data sensitif (user, hostname, IP, path).
+# Run backup service only
+python run.py --backup
+```
 
-- `AI Processor` → ringkas + beri langkah mitigasi (pakai OpenAI API).
+### Web Dashboard
 
-- `Notifier` → kirim ke Telegram, Teams, WhatsApp dengan format berbeda.
+1. **Start the web server**:
+   ```bash
+   python run.py --web
+   ```
 
-- `Logger` → error & success log.
+2. **Access the dashboard**:
+   - Open browser to `http://localhost:5000` (or configured port)
+   - Default PIN: `1234` (configurable in setup)
 
-- `Web Dashboard` → lihat status, logs, config, trigger manual.
+3. **Dashboard Tabs**:
+   - **Dashboard**: System overview, logs, and file management
+   - **Notifications**: Configure Telegram, Teams, and WhatsApp
+   - **WhatsApp**: Advanced WhatsApp gateway management
+   - **Configuration**: System settings and SentinelOne API configuration
 
----
-## 🔄 Flow Sistem
+### Advanced Features
+
+Access advanced SentinelOne features at `/sentinelone-advanced`:
+- **Polling Configuration**: Set up automated threat polling
+- **Backup Management**: Configure and execute backups
+- **Endpoint Testing**: Test SentinelOne API endpoints
+- **Data Visualization**: View threat data and statistics
+
+## Configuration
+
+### Main Configuration File: `config/config.json`
+
+```json
+{
+  "sentinelone": {
+    "base_url": "https://your-instance.sentinelone.net",
+    "api_token": "your-api-token",
+    "polling_interval": 300
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "pin": "1234"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "bot_token": "your-bot-token",
+      "chat_id": "your-chat-id"
+    },
+    "teams": {
+      "enabled": true,
+      "webhook_url": "your-teams-webhook-url"
+    },
+    "whatsapp": {
+      "enabled": true,
+      "session_name": "gateway",
+      "gateway_url": "http://localhost:5013"
+    }
+  },
+  "backup": {
+    "enabled": true,
+    "interval": 3600,
+    "retention_days": 30
+  }
+}
+```
+
+### Notification Setup
+
+#### Telegram
+1. Create a bot via [@BotFather](https://t.me/BotFather)
+2. Get the bot token
+3. Get your chat ID (send a message to the bot and check `/getUpdates`)
+4. Configure in the Notifications tab
+
+#### Microsoft Teams
+1. Create an Incoming Webhook in your Teams channel
+2. Copy the webhook URL
+3. Configure in the Notifications tab
+
+#### WhatsApp
+1. Set up a WhatsApp gateway (e.g., using whatsapp-web.js)
+2. Configure the gateway URL (default: `http://localhost:5013`)
+3. Configure session name and recipients
+
+## File Structure
 
 ```
-SentinelOne (event / webhook)
-        ↓
-   [Backup Engine] → simpan raw event JSON
-        ↓
-   [Sanitizer] → masking data sensitif
-        ↓
-   [AI Processor] → summary + mitigasi
-        ↓
-   [Notifier] → Telegram / WhatsApp / Teams
-        ↓
-   [Logs] → error.log & success.log
-        ↓
-   [Web Dashboard] → monitoring & trigger
-```
----
-## 📂 Struktur Folder
-
-```
-sentinel-monitor/
+miniapps-monitoring/
 ├── config/
-│   └── config.json             # penyimpanan config user (API key, token, dsb.)
-├── logs/                       # Penyimpanan logs (all logs, error log & success log)
-│   ├── all.log
-│   ├── error.log
-│   └── success.log
+│   └── config.json          # Main configuration file
+├── logs/
+│   ├── app.log             # Application logs
+│   ├── error.log           # Error logs
+│   └── success.log         # Success logs
 ├── notifier/
-│   ├── __init__.py
-│   ├── teams.py                # class TeamsNotifier
-│   ├── telegram.py             # class TelegramNotifier
-│   └── whatsapp/
-│       ├── __init__.py
-│       ├── cloud.py            # WA API-based (Fonnte/Meta/Twilio)
-│       └── bridge.py           # WA Node.js bridge (QR based)
-├── storage/
-│   └── events/
-│       └── detections_20250906_233355.json
+│   ├── telegram.py         # Telegram integration
+│   ├── teams.py           # Teams integration
+│   └── whatsapp.py        # WhatsApp integration
 ├── src/
-│   ├── __init__.py
-│   ├── backup.py               # modul backup rutin
-│   ├── config.py               # loader & handler config.json
-│   ├── logger.py               # setup logging (all/error/success)
-│   ├── main.py                 # core app entry (dipanggil dari run.py)
-│   ├── sentinel_api.py         # wrapper API SentinelOne (get_detection, get_activities, dll.)
-│   └── webapp.py               # FastAPI app (HTTP endpoint /send/alert)
-├── run.py                      # ⬅️ entry utama (jalankan webapp + CLI setup)
-├── setup_config.py             # (optional, bisa dipanggil via run.py)
-├── requirements.txt
-└── README.md
+│   ├── backup.py          # Backup functionality
+│   ├── config.py          # Configuration management
+│   ├── logger.py          # Custom logging
+│   ├── main.py            # Application startup
+│   ├── sentinel_api.py    # SentinelOne API wrapper
+│   └── webapp.py          # FastAPI web application
+├── storage/
+│   ├── alerts/            # Alert backups
+│   └── events/            # Event backups
+├── templates/
+│   ├── index.html         # Main dashboard
+│   ├── login.html         # Login page
+│   ├── sentinelone-advanced.html  # Advanced features
+│   └── whatsapp.html      # WhatsApp management
+├── run.py                 # Main entry point
+└── requirements.txt       # Python dependencies
 ```
----
 
-## Menjalankan Program
-#### 1. setup configurasi
+## API Endpoints
+
+### Web Dashboard
+- `GET /` - Main dashboard
+- `GET /login` - Login page
+- `POST /login` - Authentication
+- `GET /sentinelone-advanced` - Advanced features page
+
+### Configuration API
+- `GET /api/config` - Get current configuration
+- `POST /api/config/save` - Save configuration
+- `POST /api/test-connection` - Test service connections
+
+### SentinelOne API
+- `GET /api/sentinel/threats` - Get threats
+- `GET /api/sentinel/agents` - Get agents
+- `POST /api/sentinel/test` - Test API connection
+
+### Alert Receiver
+- `POST /send/alert` - Webhook endpoint for SentinelOne alerts
+
+### File Management
+- `GET /api/files/list` - List backup files
+- `GET /api/files/download` - Download backup files
+
+## Logging
+
+The system uses a comprehensive logging system with multiple log levels:
+
+- **Application Logs** (`logs/app.log`): General application events
+- **Error Logs** (`logs/error.log`): Error events and exceptions
+- **Success Logs** (`logs/success.log`): Successful operations
+- **Custom Log Levels**: INFO, WARNING, ERROR, SUCCESS
+
+## Security Considerations
+
+1. **API Tokens**: Store SentinelOne API tokens securely
+2. **Web PIN**: Change default PIN in production
+3. **Network Security**: Restrict access to the web dashboard
+4. **Webhook Security**: Validate incoming webhook requests
+5. **File Permissions**: Ensure proper file system permissions
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection Errors**:
+   - Verify SentinelOne API credentials
+   - Check network connectivity
+   - Validate webhook URLs
+
+2. **Notification Failures**:
+   - Test individual notification channels
+   - Verify bot tokens and chat IDs
+   - Check webhook configurations
+
+3. **Web Dashboard Issues**:
+   - Check port availability
+   - Verify PIN configuration
+   - Review application logs
+
+### Log Analysis
+Check the logs directory for detailed error information:
 ```bash
-python3 run.py --setup
+tail -f logs/app.log      # Application logs
+tail -f logs/error.log    # Error logs
+tail -f logs/success.log  # Success logs
 ```
 
-#### 2. jalankan webserver untuk menerima triger dari sentinel one
+## Development
+
+### Running in Development Mode
 ```bash
-python3 run.py
-```
-- untuk menggunakannya tinggal ke configurasi webhook sentinelone
-- tambahkan url 
-     ```
-     http://domainkamu/send/alert
-     ```
+# Install development dependencies
+pip install -r requirements.txt
 
-- untuk response pilih full threat ajag
-
-### Arsitektur Sederhana
-
-```
-+--------------------+       +-------------------+
-|  SentinelOne       |       | WhatsApp Gateway  |
-|  (alerts/events)   |       | (Node.js service) |
-+---------+----------+       +----------+--------+
-          |                             |
-          v                             |
-+---------+----------+   REST API       |
-| sentinel-monitor   | <----------------+
-| (Python, Flask)    | 
-| - Webhook listener |
-| - Polling engine   |
-| - Notifiers        |
-| - Dashboard (UI)   |
-+--------------------+
-          |
-          v
-   +-------------+
-   | Dashboard   |
-   | (Flask UI)  |
-   +-------------+
-
+# Run with auto-reload
+uvicorn src.main:app --reload --host 0.0.0.0 --port 5000
 ```
 
----
-## Cara Penggunaan
-# python-monitor (SentinelOne Monitor)
+### Adding New Features
+1. Update the appropriate module in `src/`
+2. Add new API endpoints in `src/webapp.py`
+3. Update the web interface in `templates/`
+4. Add configuration options to `config.json`
 
-Ringkasan:
-- Web dashboard: `python run.py --web` (baca `config/config.json` untuk host/port)
-- Setup wizard: `python run.py --setup`
-- Polling loop: `python run.py --polling` (requires valid SentinelOne config)
-- Incoming webhook: POST JSON to `/send/alert` (FastAPI server) — saved to `storage/alerts/<date>/...`
+## License
 
-## Important files
-- `config/config.json` — semua konfigurasi (SentinelOne, channels, web, polling)
-- `src/webapp.py` — FastAPI app (routes: `/`, `/login`, `/config`, `/whatsapp`, `/send/alert`)
-- `src/config.py` — load_config() / save_config()
-- `notifier/telegram.py` — notif via Telegram
-- `run.py` — entrypoint
+This project is licensed under the MIT License. See LICENSE file for details.
 
-## Quick start
-1. Run setup wizard if config missing:
-`python run.py --setup` isi SentinelOne base_url, API token, channels, web host/port, dan PIN.
+## Support
 
-2. Start web dashboard:
-`python run.py --web` buka `http://<host>:<port>/` -> login with PIN (set during setup).  
-Edit WhatsApp config on `/whatsapp` and general settings on `/config`.
+For support and questions:
+1. Check the logs for error details
+2. Verify configuration settings
+3. Test individual components
+4. Review the troubleshooting section
 
-3. Hook SentinelOne webhook to:
-`POST https://<your-monitor-host>/send/alert` The app saves the alert and will send Telegram notification if configured.
+## Version History
 
-## Templates
-Create folder `templates/` and add simple files:
-- `login.html`, `index.html`, `config.html`, `whatsapp.html`.
-(See examples in repository README or ask me to create them here.)
-
-## WhatsApp Multi-Session Integration
-
-### Features
-- **Multiple Sessions**: Create and manage multiple WhatsApp sessions
-- **Session-Aware Operations**: All WhatsApp operations support session selection
-- **QR Code Display**: Visual QR code display for easy scanning
-- **Session Status**: Real-time session status indicators
-- **Conditional UI**: Smart UI flow based on session availability
-
-### WhatsApp Gateway API Format
-
-The system integrates with WhatsApp gateway using the following API format:
-
-**Send Message**:
-```bash
-curl -X POST http://localhost:5013/api/kirim-pesan \
-  -H "Content-Type: application/json" \
-  -d '{"number":"120363220075343815@g.us","message":"Halo Group!","session":"testing"}'
-```
-
-**Get Logs**:
-```bash
-# All logs for a session
-curl http://localhost:5013/api/logs?session=gateway
-
-# Logs for specific target in session
-curl http://localhost:5013/api/logs/6282154488769?session=gateway
-```
-
-### Session Management Workflow
-
-1. **Initial Setup**: If no sessions exist, the UI shows configuration form
-2. **Session Creation**: Auto-creates session after saving configuration
-3. **Session Selection**: Select active session for operations
-4. **QR Code Scanning**: Display QR as image for WhatsApp connection
-5. **Message Sending**: Session-aware message dispatch
-
-### Enhanced API Endpoints
-
-- `GET /api/wa/sessions` - List all sessions with status
-- `POST /api/wa/connect` - Create/connect session
-- `GET /api/wa/qr?session=<name>` - Get QR code for session
-- `GET /api/wa/groups?session=<name>` - List groups in session
-- `GET /api/wa/fetch-groups?session=<name>` - Fetch groups from WhatsApp
-- `POST /api/wa/send` - Send message (with session parameter)
-- `GET /api/wa/logs?session=<name>` - Get logs for session
-- `GET /api/wa/logs/<target>?session=<name>` - Get logs for specific target
-
-### Configuration Fields
-- `bridge_url`: WhatsApp gateway base URL
-- `session_name`: Default session name
-- `notify_number`: Phone number/group for notifications
-- `notify_session`: Session to use for notifications
-
-### Multi-Session Benefits
-- **Isolation**: Separate WhatsApp accounts for different purposes
-- **Reliability**: Backup sessions if primary session fails
-- **Organization**: Different sessions for different teams/groups
-- **Scalability**: Handle multiple WhatsApp integrations simultaneously
-
-## Notes
-- `config/config.json` **must not** be committed (keeps secrets).
-- WhatsApp multi-session support requires external WhatsApp gateway service
-- If you want backup scheduler or advanced polling orchestration (systemd/pm2), I can add examples.
+### v2.0
+- Unified web dashboard with tabbed interface
+- Advanced SentinelOne integration
+- Multi-channel notification system
+- Comprehensive logging and monitoring
+- File management and backup system
+- Hacker-style UI with terminal aesthetics

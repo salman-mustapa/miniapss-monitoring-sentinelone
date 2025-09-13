@@ -252,3 +252,15 @@ class WhatsAppBridge:
         result['recipient'] = number_or_group
         result['session_name'] = session_name
         return result
+
+    def test_connection(self) -> dict:
+        """Test WhatsApp gateway connection"""
+        try:
+            # Try to get sessions to test connection
+            result = self.list_sessions()
+            if result.get('success'):
+                return {"success": True, "message": "WhatsApp gateway connection successful"}
+            else:
+                return {"success": False, "error": result.get('error', 'Connection test failed')}
+        except Exception as e:
+            return {"success": False, "error": str(e)}

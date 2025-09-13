@@ -1,29 +1,325 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Login - Sentinel Monitor</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background:#0b0f10; color:#8aff9b; font-family: "Courier New", monospace; }
-    .card { background:#071012; color:#0f4; border:1px solid #0f4; }
-    input, button { font-family: monospace; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SentinelOne Monitor - Access Terminal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e0f;
+            --bg-secondary: #0f1419;
+            --bg-tertiary: #1a1f24;
+            --text-primary: #00ff41;
+            --text-secondary: #39ff14;
+            --text-muted: #4a9eff;
+            --border-color: #00ff41;
+            --danger: #ff073a;
+            --warning: #ffaa00;
+            --success: #00ff41;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            font-family: 'Courier New', 'Monaco', 'Menlo', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Matrix rain effect background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(0, 255, 65, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(57, 255, 20, 0.1) 0%, transparent 50%);
+            animation: matrix-bg 20s ease-in-out infinite alternate;
+            z-index: -1;
+        }
+
+        @keyframes matrix-bg {
+            0% { opacity: 0.3; }
+            50% { opacity: 0.1; }
+            100% { opacity: 0.3; }
+        }
+
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-terminal {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            box-shadow: 
+                0 0 20px rgba(0, 255, 65, 0.3),
+                inset 0 0 20px rgba(0, 255, 65, 0.1);
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background: var(--bg-tertiary);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .terminal-dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .dot.red { background: var(--danger); }
+        .dot.yellow { background: var(--warning); }
+        .dot.green { background: var(--success); }
+
+        .terminal-title {
+            color: var(--text-primary);
+            font-weight: bold;
+            margin-left: 15px;
+            font-size: 14px;
+        }
+
+        .terminal-body {
+            padding: 30px;
+        }
+
+        .ascii-art {
+            text-align: center;
+            margin-bottom: 30px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: pre;
+        }
+
+        .login-form {
+            margin-top: 20px;
+        }
+
+        .form-label {
+            color: var(--text-primary);
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: block;
+            font-size: 14px;
+        }
+
+        .form-control {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            padding: 12px 15px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            background: var(--bg-primary);
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+            outline: none;
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+
+        .btn-terminal {
+            background: linear-gradient(45deg, var(--bg-tertiary), var(--bg-secondary));
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            padding: 12px 25px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            width: 100%;
+        }
+
+        .btn-terminal:hover {
+            background: linear-gradient(45deg, var(--border-color), var(--text-secondary));
+            color: var(--bg-primary);
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .btn-terminal:active {
+            transform: translateY(0);
+        }
+
+        .security-notice {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 255, 65, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .blinking-cursor {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .terminal-prompt {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .login-container {
+                padding: 10px;
+            }
+            
+            .terminal-body {
+                padding: 20px;
+            }
+            
+            .ascii-art {
+                font-size: 10px;
+            }
+        }
+    </style>
 </head>
-<body class="p-4">
-  <div class="container col-md-4 mx-auto">
-    <div class="card p-4">
-      <h4 class="text-center">🔐 Login</h4>
-      <form method="post" action="/login">
-        <div class="mb-3">
-          <label class="form-label">PIN</label>
-          <input name="pin" class="form-control" placeholder="Enter PIN" autofocus required>
+<body>
+    <div class="login-container">
+        <div class="login-terminal">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="terminal-title">SENTINELONE MONITOR v2.0 - ACCESS TERMINAL</div>
+            </div>
+            
+            <div class="terminal-body">
+                <div class="ascii-art">
+╔═══════════════════════════════════════════════════════════╗
+║  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗ ║
+║  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝ ║
+║  ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗   ║
+║  ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝   ║
+║  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗ ║
+║  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝ ║
+║                                                           ║
+║              ADVANCED SECURITY MONITORING SYSTEM         ║
+╚═══════════════════════════════════════════════════════════╝
+                </div>
+                
+                <div class="terminal-prompt">
+                    <i class="fas fa-shield-alt"></i> SECURE ACCESS REQUIRED
+                    <br>
+                    <span class="text-muted">Enter your authentication PIN to access the monitoring dashboard</span>
+                </div>
+                
+                <form method="post" action="/login" class="login-form">
+                    <div class="mb-3">
+                        <label for="pin" class="form-label">
+                            <i class="fas fa-key"></i> AUTHENTICATION PIN
+                        </label>
+                        <input 
+                            type="password" 
+                            id="pin"
+                            name="pin" 
+                            class="form-control" 
+                            placeholder="Enter your PIN..." 
+                            autofocus 
+                            required
+                            maxlength="10"
+                        >
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-terminal">
+                            <i class="fas fa-sign-in-alt"></i> ACCESS SYSTEM
+                        </button>
+                    </div>
+                </form>
+                
+                <div class="security-notice">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>SECURITY NOTICE:</strong> This system is for authorized personnel only.
+                    <br>All access attempts are logged and monitored.
+                    <span class="blinking-cursor">█</span>
+                </div>
+            </div>
         </div>
-        <div class="d-grid">
-          <button class="btn btn-success">Login</button>
-        </div>
-      </form>
     </div>
-  </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Add some terminal-like effects
+        document.addEventListener('DOMContentLoaded', function() {
+            const pinInput = document.getElementById('pin');
+            
+            // Add typing sound effect simulation
+            pinInput.addEventListener('keydown', function(e) {
+                // Add subtle visual feedback on keypress
+                this.style.boxShadow = '0 0 15px rgba(0, 255, 65, 0.5)';
+                setTimeout(() => {
+                    this.style.boxShadow = '0 0 10px rgba(0, 255, 65, 0.3)';
+                }, 100);
+            });
+            
+            // Form submission with loading effect
+            document.querySelector('form').addEventListener('submit', function(e) {
+                const button = this.querySelector('button');
+                const originalText = button.innerHTML;
+                
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AUTHENTICATING...';
+                button.disabled = true;
+                
+                // Re-enable after a short delay if there's an error
+                setTimeout(() => {
+                    if (button.disabled) {
+                        button.innerHTML = originalText;
+                        button.disabled = false;
+                    }
+                }, 5000);
+            });
+        });
+    </script>
 </body>
 </html>

@@ -1,10 +1,11 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SentinelOne Monitor - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     :root {
       --bg-primary: #0a0e0f;
@@ -357,7 +358,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">API TOKEN</label>
-              <input type="password" class="form-control" id="sentinel-token" placeholder="Your API Token" autocomplete="new-password">
+              <input type="password" class="form-control" id="sentinel-token" placeholder="Your API Token">
             </div>
           </div>
           <div class="mt-3 d-flex gap-2">
@@ -393,7 +394,7 @@
             <div class="row g-3">
               <div class="col-md-4">
                 <label class="form-label">BOT TOKEN</label>
-                <input type="password" class="form-control telegram-token" placeholder="Bot Token" autocomplete="new-password">
+                <input type="password" class="form-control telegram-token" placeholder="Bot Token">
               </div>
               <div class="col-md-3">
                 <label class="form-label">CHAT ID</label>
@@ -668,30 +669,76 @@
 
     async function refreshSessions() {
       try {
-        const response = await fetch('/api/whatsapp/sessions');
+        // Get WhatsApp gateway URL from config
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        
+        let gatewayUrl = 'http://localhost:5013'; // default
+        if (configData.success && configData.config?.whatsapp_gateway?.base_url) {
+          gatewayUrl = configData.config.whatsapp_gateway.base_url;
+        }
+        
+        const response = await fetch(`${gatewayUrl}/api/sessions`);
         const data = await response.json();
         
-        const container = document.getElementById('sessions-container');
-        if (data.success && data.sessions && data.sessions.length > 0) {
-          let html = '<div class="row">';
+        const container = document.getElementById('sessions-list');
+        if (data.success && data.sessions) {
+          container.innerHTML = data.sessions.map(session => `
+            <div class="session-item">
+              <span class="session-name">${session.name}</span>
+              <span class="session-status ${session.connected ? 'connected' : 'disconnected'}">
+                ${session.connected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<div class="text-danger">No sessions found</div>';
+        }
+      } catch (error) {
+        document.getElementById('sessions-list').innerHTML = '<div class="text-danger">Connection error: ' + error.message + '</div>';
+      }
+    }
+
+    async function refreshSessions() {
+      const container = document.getElementById('sessions-container');
+      container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> LOADING...</div>';
+      
+      try {
+        // Get WhatsApp gateway URL from config
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        
+        let gatewayUrl = 'http://localhost:5013'; // default
+        if (configData.success && configData.config?.whatsapp_gateway?.base_url) {
+          gatewayUrl = configData.config.whatsapp_gateway.base_url;
+        }
+        
+        const response = await fetch(`${gatewayUrl}/api/sessions`);
+        const data = await response.json();
+        
+        if (data.success && data.sessions) {
+          let html = '<div class="row g-2">';
           data.sessions.forEach(session => {
-            const status = session.status === 'connected' ? 'success' : 'danger';
             html += `
-              <div class="col-md-6 mb-2">
-                <div class="alert alert-${status} mb-1">
-                  <strong>${session.name}</strong> - ${session.status}
+              <div class="col-md-6">
+                <div class="hacker-card">
+                  <h6>${session.name}</h6>
+                  <p class="mb-2">Status: <span class="badge ${session.connected ? 'bg-success' : 'bg-danger'}">${session.connected ? 'CONNECTED' : 'DISCONNECTED'}</span></p>
+                  ${!session.connected ? `<button class="btn btn-hacker btn-sm" onclick="connectSession('${session.name}')">CONNECT</button>` : ''}
                 </div>
               </div>
             `;
           });
           html += '</div>';
           container.innerHTML = html;
+          appendToTerminal('[SUCCESS] Sessions refreshed');
         } else {
-          container.innerHTML = '<div class="text-warning">No active sessions found</div>';
+          container.innerHTML = '<div class="text-danger">Failed to load sessions</div>';
+          appendToTerminal('[ERROR] Session refresh failed: ' + (data.error || 'Unknown error'));
         }
       } catch (error) {
-        const container = document.getElementById('sessions-container');
         container.innerHTML = '<div class="text-danger">Connection error: ' + error.message + '</div>';
+        appendToTerminal('[ERROR] Session request failed: ' + error.message);
       }
     }
 
@@ -1039,7 +1086,7 @@
             <div class="row g-3">
               <div class="col-md-4">
                 <label class="form-label">BOT TOKEN</label>
-                <input type="password" class="form-control telegram-token" placeholder="Bot Token" autocomplete="new-password">
+                <input type="password" class="form-control telegram-token" placeholder="Bot Token">
               </div>
               <div class="col-md-3">
                 <label class="form-label">CHAT ID</label>
@@ -1166,10 +1213,10 @@
             <input type="text" class="form-control telegram-chat" placeholder="Chat ID">
           </div>
           <div class="col-md-2">
-            <label class="form-label">ENABLED</label>
+            <label class="form-label">DEFAULT</label>
             <div class="form-check mt-2">
-              <input class="form-check-input telegram-enabled" type="checkbox">
-              <label class="form-check-label">Enable</label>
+              <input class="form-check-input telegram-default" type="checkbox">
+              <label class="form-check-label">Use for notifications</label>
             </div>
           </div>
           <div class="col-md-3">
@@ -1246,17 +1293,100 @@
       newRecipient.innerHTML = `
         <div class="row g-3">
           <div class="col-md-4">
-            <label class="form-label">RECIPIENT NUMBER/GROUP</label>
-            <input type="text" class="form-control wa-recipient" placeholder="628xxxxxxxxx or group ID">
+            <label class="form-label">PHONE NUMBER</label>
+            <input type="text" class="form-control wa-phone" placeholder="628123456789">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">SESSION</label>
+            <select class="form-select wa-session">
+              <option value="gateway">gateway</option>
+            </select>
           </div>
           <div class="col-md-2">
-            <label class="form-label">DEFAULT</label>
+            <label class="form-label">ENABLED</label>
             <div class="form-check mt-2">
-              <input class="form-check-input wa-default" type="checkbox">
-              <label class="form-check-label">Use for notifications</label>
+              <input class="form-check-input wa-enabled" type="checkbox">
+              <label class="form-check-label">Enable</label>
             </div>
           </div>
-          <div class="col-md-6">
+          <div class="col-md-3">
+            <label class="form-label">ACTIONS</label>
+            <div class="mt-2">
+              <button type="button" class="btn btn-hacker btn-sm me-1" onclick="testWhatsAppRecipient(${whatsappRecipientCount})">
+                <i class="fas fa-plug"></i> TEST
+              </button>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeWhatsAppRecipient(${whatsappRecipientCount})">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(newRecipient);
+      whatsappRecipientCount++;
+    }
+
+    function removeWhatsAppRecipient(index) {
+      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
+      if (recipient && document.querySelectorAll('.whatsapp-recipient').length > 1) {
+        recipient.remove();
+      }
+    }
+
+    function testWhatsAppRecipient(index) {
+      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
+      const phone = recipient.querySelector('.wa-phone').value;
+      const session = recipient.querySelector('.wa-session').value;
+      
+      if (!phone) {
+        addToTerminal('notifications-output', 'Please enter phone number', 'error');
+        return;
+      }
+      
+      addToTerminal('notifications-output', `Testing WhatsApp message to ${phone}...`, 'info');
+      // Add actual test logic here
+    }
+
+    function saveWhatsAppConfigs() {
+      const recipients = [];
+      document.querySelectorAll('.whatsapp-recipient').forEach(recipient => {
+        const phone = recipient.querySelector('.wa-phone').value;
+        const session = recipient.querySelector('.wa-session').value;
+        const enabled = recipient.querySelector('.wa-enabled').checked;
+        
+        if (phone) {
+          recipients.push({ phone: phone, session: session, enabled: enabled });
+        }
+      });
+      
+      addToTerminal('notifications-output', 'WhatsApp configurations saved', 'success');
+    }
+
+    function addWhatsAppRecipient() {
+      const container = document.getElementById('whatsapp-recipients');
+      const newRecipient = document.createElement('div');
+      newRecipient.className = 'whatsapp-recipient mb-3';
+      newRecipient.setAttribute('data-index', whatsappRecipientCount);
+      newRecipient.innerHTML = `
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">PHONE NUMBER</label>
+            <input type="text" class="form-control wa-phone" placeholder="628123456789">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">SESSION</label>
+            <select class="form-select wa-session">
+              <option value="gateway">gateway</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">ENABLED</label>
+            <div class="form-check mt-2">
+              <input class="form-check-input wa-enabled" type="checkbox">
+              <label class="form-check-label">Enable</label>
+            </div>
+          </div>
+          <div class="col-md-3">
             <label class="form-label">ACTIONS</label>
             <div class="mt-2">
               <button type="button" class="btn btn-hacker btn-sm me-1" onclick="testWhatsAppRecipient(${whatsappRecipientCount})">
@@ -1280,35 +1410,6 @@
       }
     }
 
-    // Save WhatsApp configurations
-    function saveWhatsAppConfigs() {
-      const recipients = [];
-      document.querySelectorAll('.whatsapp-recipient').forEach(recipient => {
-        const number = recipient.querySelector('.wa-recipient').value;
-        const isDefault = recipient.querySelector('.wa-default').checked;
-        
-        if (number) {
-          recipients.push({ number: number, default: isDefault });
-        }
-      });
-      
-      addToTerminal('notifications-output', 'WhatsApp configurations saved', 'success');
-    }
-
-    // Test WhatsApp recipient
-    async function testWhatsAppRecipient(index) {
-      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
-      const number = recipient.querySelector('.wa-recipient').value;
-      
-      if (!number) {
-        addToTerminal('notifications-output', 'Please enter recipient number', 'error');
-        return;
-      }
-      
-      addToTerminal('notifications-output', 'Testing WhatsApp message to: ' + number, 'info');
-      // Implementation would go here
-    }
-
     // Test connection functions
     async function testTelegramConnection(index) {
       const config = document.querySelector(`.telegram-config[data-index="${index}"]`);
@@ -1316,31 +1417,25 @@
       const chatId = config.querySelector('.telegram-chat').value;
       
       if (!token || !chatId) {
-        addToTerminal('notifications-output', 'Telegram: Token and Chat ID required', 'error');
+        appendToTerminal('[ERROR] Telegram: Token and Chat ID required');
         return;
       }
       
       try {
-        addToTerminal('notifications-output', 'Testing Telegram connection...', 'info');
-        
-        const response = await fetch('/api/test-connection', {
+        const response = await fetch('/api/test-telegram', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'telegram', 
-            token: token, 
-            chat_id: chatId 
-          })
+          body: JSON.stringify({ token, chat_id: chatId })
         });
         
         const data = await response.json();
         if (data.success) {
-          addToTerminal('notifications-output', 'Telegram connection test passed', 'success');
+          appendToTerminal('[SUCCESS] Telegram connection test passed');
         } else {
-          addToTerminal('notifications-output', 'Telegram connection failed: ' + (data.error || 'Unknown error'), 'error');
+          appendToTerminal('[ERROR] Telegram connection failed: ' + data.error);
         }
       } catch (error) {
-        addToTerminal('notifications-output', 'Telegram test failed: ' + error.message, 'error');
+        appendToTerminal('[ERROR] Telegram test failed: ' + error.message);
       }
     }
 
@@ -1349,63 +1444,54 @@
       const webhook = config.querySelector('.teams-webhook').value;
       
       if (!webhook) {
-        addToTerminal('notifications-output', 'Teams: Webhook URL required', 'error');
+        appendToTerminal('[ERROR] Teams: Webhook URL required');
         return;
       }
       
       try {
-        addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
-        
-        const response = await fetch('/api/test-connection', {
+        const response = await fetch('/api/test-teams', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'teams', 
-            webhook_url: webhook 
-          })
+          body: JSON.stringify({ webhook_url: webhook })
         });
         
         const data = await response.json();
         if (data.success) {
-          addToTerminal('notifications-output', 'Teams connection test passed', 'success');
+          appendToTerminal('[SUCCESS] Teams connection test passed');
         } else {
-          addToTerminal('notifications-output', 'Teams connection failed: ' + (data.error || 'Unknown error'), 'error');
+          appendToTerminal('[ERROR] Teams connection failed: ' + data.error);
         }
       } catch (error) {
-        addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
+        appendToTerminal('[ERROR] Teams test failed: ' + error.message);
       }
     }
 
-    // Test all notification channels
-    async function testAllChannels() {
-      addToTerminal('notifications-output', 'Testing all notification channels...', 'info');
+    async function testWhatsAppRecipient(index) {
+      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
+      const number = recipient.querySelector('.wa-recipient').value;
+      const session = document.getElementById('wa-default-session').value;
       
-      // Test Telegram if configured
-      const telegramConfigs = document.querySelectorAll('.telegram-config');
-      for (let i = 0; i < telegramConfigs.length; i++) {
-        const config = telegramConfigs[i];
-        const token = config.querySelector('.telegram-token').value;
-        const chatId = config.querySelector('.telegram-chat').value;
-        const enabled = config.querySelector('.telegram-enabled').checked;
-        
-        if (token && chatId && enabled) {
-          await testTelegramConnection(config.getAttribute('data-index'));
-        }
+      if (!number) {
+        appendToTerminal('[ERROR] WhatsApp: Recipient number required');
+        return;
       }
       
-      // Test Teams if configured
-      const teamsConfigs = document.querySelectorAll('.teams-config');
-      for (let i = 0; i < teamsConfigs.length; i++) {
-        const config = teamsConfigs[i];
-        const webhook = config.querySelector('.teams-webhook').value;
-        const enabled = config.querySelector('.teams-enabled').checked;
+      try {
+        const response = await fetch('/api/test-whatsapp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number, session })
+        });
         
-        if (webhook && enabled) {
-          await testTeamsConnection(config.getAttribute('data-index'));
+        const data = await response.json();
+        if (data.success) {
+          appendToTerminal('[SUCCESS] WhatsApp test message sent');
+        } else {
+          appendToTerminal('[ERROR] WhatsApp test failed: ' + data.error);
         }
+      } catch (error) {
+        appendToTerminal('[ERROR] WhatsApp test failed: ' + error.message);
       }
-      
-      addToTerminal('notifications-output', 'All channel tests completed', 'success');
     }
 
     // Save configuration functions
@@ -1414,37 +1500,28 @@
       document.querySelectorAll('.telegram-config').forEach(config => {
         const token = config.querySelector('.telegram-token').value;
         const chatId = config.querySelector('.telegram-chat').value;
-        const enabled = config.querySelector('.telegram-enabled').checked;
+        const isDefault = config.querySelector('.telegram-default').checked;
         
         if (token && chatId) {
-          configs.push({ bot_token: token, chat_id: chatId, enabled: enabled });
+          configs.push({ token, chat_id: chatId, default: isDefault });
         }
       });
       
-      if (configs.length === 0) {
-        addToTerminal('notifications-output', 'No valid Telegram configurations to save', 'error');
-        return;
-      }
-      
       try {
-        addToTerminal('notifications-output', 'Saving Telegram configurations...', 'info');
-        
-        const response = await fetch('/api/config/save', {
+        const response = await fetch('/api/save-telegram-configs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channels: { telegram: configs[0] } // Save first config as primary
-          })
+          body: JSON.stringify({ configs })
         });
         
         const data = await response.json();
         if (data.success) {
-          addToTerminal('notifications-output', 'Telegram configuration saved successfully', 'success');
+          appendToTerminal('[SUCCESS] Telegram configurations saved');
         } else {
-          addToTerminal('notifications-output', 'Failed to save Telegram config: ' + (data.error || 'Unknown error'), 'error');
+          appendToTerminal('[ERROR] Failed to save Telegram configs: ' + data.error);
         }
       } catch (error) {
-        addToTerminal('notifications-output', 'Telegram config save failed: ' + error.message, 'error');
+        appendToTerminal('[ERROR] Save failed: ' + error.message);
       }
     }
 
@@ -1452,37 +1529,28 @@
       const configs = [];
       document.querySelectorAll('.teams-config').forEach(config => {
         const webhook = config.querySelector('.teams-webhook').value;
-        const enabled = config.querySelector('.teams-enabled').checked;
+        const isDefault = config.querySelector('.teams-default').checked;
         
         if (webhook) {
-          configs.push({ webhook_url: webhook, enabled: enabled });
+          configs.push({ webhook_url: webhook, default: isDefault });
         }
       });
       
-      if (configs.length === 0) {
-        addToTerminal('notifications-output', 'No valid Teams configurations to save', 'error');
-        return;
-      }
-      
       try {
-        addToTerminal('notifications-output', 'Saving Teams configurations...', 'info');
-        
-        const response = await fetch('/api/config/save', {
+        const response = await fetch('/api/save-teams-configs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channels: { teams: configs[0] } // Save first config as primary
-          })
+          body: JSON.stringify({ configs })
         });
         
         const data = await response.json();
         if (data.success) {
-          addToTerminal('notifications-output', 'Teams configuration saved successfully', 'success');
+          appendToTerminal('[SUCCESS] Teams configurations saved');
         } else {
-          addToTerminal('notifications-output', 'Failed to save Teams config: ' + (data.error || 'Unknown error'), 'error');
+          appendToTerminal('[ERROR] Failed to save Teams configs: ' + data.error);
         }
       } catch (error) {
-        addToTerminal('notifications-output', 'Teams config save failed: ' + error.message, 'error');
+        appendToTerminal('[ERROR] Save failed: ' + error.message);
       }
     }
 
@@ -1501,310 +1569,24 @@
       const defaultSession = document.getElementById('wa-default-session').value;
       
       try {
-        addToTerminal('notifications-output', 'Saving WhatsApp configurations...', 'info');
-        
-        const response = await fetch('/api/config/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channels: { 
-              whatsapp: { 
-                enabled: true,
-                session_name: defaultSession,
-                recipients: recipients
-              }
-            },
-            whatsapp_gateway: {
-              base_url: gatewayUrl
-            }
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', 'WhatsApp configuration saved successfully', 'success');
-        } else {
-          addToTerminal('notifications-output', 'Failed to save WhatsApp config: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', 'WhatsApp config save failed: ' + error.message, 'error');
-      }
-    }
-
-    // Test notification functions
-    async function testTelegramNotification() {
-      try {
-        addToTerminal('notifications-output', 'Testing Telegram notification...', 'info');
-        
-        const response = await fetch('/api/test-notification', {
+        const response = await fetch('/api/save-whatsapp-configs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            type: 'telegram',
-            message: 'Test notification from SentinelOne Monitor'
+            gateway_url: gatewayUrl,
+            default_session: defaultSession,
+            recipients 
           })
         });
         
         const data = await response.json();
         if (data.success) {
-          addToTerminal('notifications-output', 'Telegram test notification sent successfully', 'success');
+          appendToTerminal('[SUCCESS] WhatsApp configurations saved');
         } else {
-          addToTerminal('notifications-output', 'Telegram test failed: ' + (data.error || 'Unknown error'), 'error');
+          appendToTerminal('[ERROR] Failed to save WhatsApp configs: ' + data.error);
         }
       } catch (error) {
-        addToTerminal('notifications-output', 'Telegram test failed: ' + error.message, 'error');
-      }
-    }
-
-    async function testTeamsNotification() {
-      try {
-        addToTerminal('notifications-output', 'Testing Teams notification...', 'info');
-        
-        const response = await fetch('/api/test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            type: 'teams',
-            message: 'Test notification from SentinelOne Monitor'
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', 'Teams test notification sent successfully', 'success');
-        } else {
-          addToTerminal('notifications-output', 'Teams test failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
-      }
-    }
-
-    async function testWhatsAppNotification() {
-      try {
-        addToTerminal('notifications-output', 'Testing WhatsApp notification...', 'info');
-        
-        const response = await fetch('/api/test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            type: 'whatsapp',
-            message: 'Test notification from SentinelOne Monitor'
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', 'WhatsApp test notification sent successfully', 'success');
-        } else {
-          addToTerminal('notifications-output', 'WhatsApp test failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', 'WhatsApp test failed: ' + error.message, 'error');
-      }
-    }
-
-    // Add/Remove config functions
-    function addTelegramConfig() {
-      const container = document.getElementById('telegram-configs');
-      const configCount = container.children.length;
-      
-      const configHtml = `
-        <div class="telegram-config border rounded p-3 mb-3" data-index="${configCount}">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">Telegram Config #${configCount + 1}</h6>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTelegramConfig(this)">
-              <i class="fas fa-trash"></i> Remove
-            </button>
-          </div>
-          <div class="row">
-            <div class="col-md-6">
-              <label class="form-label">Bot Token</label>
-              <input type="text" class="form-control telegram-token" placeholder="Bot Token">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Chat ID</label>
-              <input type="text" class="form-control telegram-chat" placeholder="Chat ID">
-            </div>
-            <div class="col-md-2">
-              <div class="form-check mt-4">
-                <input class="form-check-input telegram-enabled" type="checkbox" checked>
-                <label class="form-check-label">Enabled</label>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      container.insertAdjacentHTML('beforeend', configHtml);
-      addToTerminal('notifications-output', 'New Telegram configuration added', 'info');
-    }
-
-    function removeTelegramConfig(button) {
-      const config = button.closest('.telegram-config');
-      config.remove();
-      addToTerminal('notifications-output', 'Telegram configuration removed', 'info');
-    }
-
-    function addTeamsConfig() {
-      const container = document.getElementById('teams-configs');
-      const configCount = container.children.length;
-      
-      const configHtml = `
-        <div class="teams-config border rounded p-3 mb-3" data-index="${configCount}">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">Teams Config #${configCount + 1}</h6>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTeamsConfig(this)">
-              <i class="fas fa-trash"></i> Remove
-            </button>
-          </div>
-          <div class="row">
-            <div class="col-md-10">
-              <label class="form-label">Webhook URL</label>
-              <input type="text" class="form-control teams-webhook" placeholder="Teams Webhook URL">
-            </div>
-            <div class="col-md-2">
-              <div class="form-check mt-4">
-                <input class="form-check-input teams-default" type="checkbox">
-                <label class="form-check-label">Default</label>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      container.insertAdjacentHTML('beforeend', configHtml);
-      addToTerminal('notifications-output', 'New Teams configuration added', 'info');
-    }
-
-    function removeTeamsConfig(button) {
-      const config = button.closest('.teams-config');
-      config.remove();
-      addToTerminal('notifications-output', 'Teams configuration removed', 'info');
-    }
-
-    function addWhatsAppRecipient() {
-      const container = document.getElementById('whatsapp-recipients');
-      const recipientCount = container.children.length;
-      
-      const recipientHtml = `
-        <div class="whatsapp-recipient border rounded p-3 mb-3" data-index="${recipientCount}">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">Recipient #${recipientCount + 1}</h6>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeWhatsAppRecipient(this)">
-              <i class="fas fa-trash"></i> Remove
-            </button>
-          </div>
-          <div class="row">
-            <div class="col-md-10">
-              <label class="form-label">Phone Number</label>
-              <input type="text" class="form-control wa-recipient" placeholder="Phone Number (e.g., +1234567890)">
-            </div>
-            <div class="col-md-2">
-              <div class="form-check mt-4">
-                <input class="form-check-input wa-default" type="checkbox">
-                <label class="form-check-label">Default</label>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      container.insertAdjacentHTML('beforeend', recipientHtml);
-      addToTerminal('notifications-output', 'New WhatsApp recipient added', 'info');
-    }
-
-    function removeWhatsAppRecipient(button) {
-      const recipient = button.closest('.whatsapp-recipient');
-      recipient.remove();
-      addToTerminal('notifications-output', 'WhatsApp recipient removed', 'info');
-    }
-
-
-    async function testTeamsConnection(configIndex) {
-      try {
-        const config = document.querySelector(`.teams-config[data-index="${configIndex}"]`);
-        if (!config) {
-          addToTerminal('notifications-output', 'Teams config not found', 'error');
-          return;
-        }
-
-        const webhookUrl = config.querySelector('.teams-webhook').value;
-
-        if (!webhookUrl) {
-          addToTerminal('notifications-output', 'Please fill in the Webhook URL', 'error');
-          return;
-        }
-
-        addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
-
-        const response = await fetch('/api/test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'teams',
-            config: { webhook_url: webhookUrl },
-            message: 'Test message from SentinelOne Monitor'
-          })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', `Teams config #${parseInt(configIndex) + 1} test successful`, 'success');
-        } else {
-          addToTerminal('notifications-output', `Teams config #${parseInt(configIndex) + 1} test failed: ${data.error || 'Unknown error'}`, 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', `Teams connection test failed: ${error.message}`, 'error');
-      }
-    }
-
-    async function testWhatsAppRecipient(recipientIndex) {
-      try {
-        const recipient = document.querySelector(`.whatsapp-recipient[data-index="${recipientIndex}"]`);
-        if (!recipient) {
-          addToTerminal('notifications-output', 'WhatsApp recipient not found', 'error');
-          return;
-        }
-
-        const number = recipient.querySelector('.wa-recipient').value;
-        const gatewayUrl = document.getElementById('wa-gateway-url').value;
-        const sessionName = document.getElementById('wa-default-session').value;
-
-        if (!number) {
-          addToTerminal('notifications-output', 'Please fill in the phone number', 'error');
-          return;
-        }
-
-        if (!gatewayUrl || !sessionName) {
-          addToTerminal('notifications-output', 'Please configure Gateway URL and Session Name first', 'error');
-          return;
-        }
-
-        addToTerminal('notifications-output', 'Testing WhatsApp recipient...', 'info');
-
-        const response = await fetch('/api/test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'whatsapp',
-            config: { 
-              gateway_url: gatewayUrl,
-              session_name: sessionName,
-              recipient: number
-            },
-            message: 'Test message from SentinelOne Monitor'
-          })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', `WhatsApp recipient #${parseInt(recipientIndex) + 1} test successful`, 'success');
-        } else {
-          addToTerminal('notifications-output', `WhatsApp recipient #${parseInt(recipientIndex) + 1} test failed: ${data.error || 'Unknown error'}`, 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', `WhatsApp recipient test failed: ${error.message}`, 'error');
+        appendToTerminal('[ERROR] Save failed: ' + error.message);
       }
     }
 
@@ -2261,15 +2043,20 @@
           document.getElementById('config-new-pin').value = '';
           document.getElementById('config-confirm-pin').value = '';
         } else {
-          addToTerminal('config-output', data.error || 'Failed to save configuration', 'error');
+          addToTerminal('config-output', `Error: ${data.error}`, 'error');
         }
       } catch (error) {
-        addToTerminal('config-output', 'Config save request failed: ' + error.message, 'error');
+        addToTerminal('config-output', `Error: ${error.message}`, 'error');
       }
     });
 
-    // WhatsApp connection function
-    async function connectWhatsAppSession(sessionName) {
+    // Load trees when dashboard tab is shown
+    document.addEventListener('DOMContentLoaded', function() {
+      loadLogsTree();
+      loadStorageTree();
+    });
+
+    async function connectSession(sessionName) {
       try {
         const response = await fetch('/api/wa/connect', {
           method: 'POST',
@@ -2288,7 +2075,7 @@
       } catch (error) {
         appendToTerminal('[ERROR] Session connection error: ' + error.message);
       }
-    }
+    });
 
     // Test system configuration
     async function testSystemConfig() {
@@ -2400,7 +2187,7 @@
       }
     }
 
-    // Global notification test functions
+    // Connection test functions
     async function testTelegramConnection(index) {
       const config = document.querySelector(`.telegram-config[data-index="${index}"]`);
       const token = config.querySelector('.telegram-token').value;
@@ -2414,17 +2201,18 @@
       try {
         addToTerminal('notifications-output', 'Testing Telegram connection...', 'info');
         
-        const response = await fetch('/api/test-notification', {
+        const response = await fetch('/api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'telegram',
-            config: { token, chat_id: chatId },
-            message: 'Test message from SentinelOne Monitor'
+          body: JSON.stringify({ 
+            service: 'telegram', 
+            token: token, 
+            chat_id: chatId 
           })
         });
         
         const data = await response.json();
+        
         if (data.success) {
           addToTerminal('notifications-output', 'Telegram connection successful', 'success');
         } else {
@@ -2447,17 +2235,17 @@
       try {
         addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
         
-        const response = await fetch('/api/test-notification', {
+        const response = await fetch('/api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'teams',
-            config: { webhook_url: webhook },
-            message: 'Test message from SentinelOne Monitor'
+          body: JSON.stringify({ 
+            service: 'teams', 
+            webhook_url: webhook 
           })
         });
         
         const data = await response.json();
+        
         if (data.success) {
           addToTerminal('notifications-output', 'Teams connection successful', 'success');
         } else {
@@ -2465,88 +2253,6 @@
         }
       } catch (error) {
         addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
-      }
-    }
-
-    async function testWhatsAppRecipient(index) {
-      const config = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
-      const recipient = config.querySelector('.whatsapp-number').value;
-      
-      if (!recipient) {
-        addToTerminal('notifications-output', 'Please enter recipient number', 'error');
-        return;
-      }
-      
-      try {
-        addToTerminal('notifications-output', 'Testing WhatsApp connection...', 'info');
-        
-        // Get WhatsApp gateway config
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
-        
-        if (!configData.success || !configData.config?.whatsapp_gateway) {
-          addToTerminal('notifications-output', 'WhatsApp gateway not configured', 'error');
-          return;
-        }
-        
-        const gatewayConfig = configData.config.whatsapp_gateway;
-        
-        const response = await fetch('/api/test-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'whatsapp',
-            config: {
-              gateway_url: gatewayConfig.base_url,
-              session_name: gatewayConfig.session_name,
-              recipient: recipient
-            },
-            message: 'Test message from SentinelOne Monitor'
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('notifications-output', 'WhatsApp connection successful', 'success');
-        } else {
-          addToTerminal('notifications-output', 'WhatsApp connection failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('notifications-output', 'WhatsApp test failed: ' + error.message, 'error');
-      }
-    }
-
-    // Global function for SentinelOne connection test
-    async function testSentinelConnection() {
-      const baseUrl = document.getElementById('sentinel-url').value;
-      const apiToken = document.getElementById('sentinel-token').value;
-      
-      if (!baseUrl || !apiToken) {
-        addToTerminal('sentinelone-output', 'Please enter both Base URL and API Token', 'error');
-        return;
-      }
-      
-      try {
-        addToTerminal('sentinelone-output', 'Testing SentinelOne connection...', 'info');
-        
-        const response = await fetch('/api/test-connection', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'sentinelone', 
-            url: baseUrl,
-            token: apiToken
-          })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-          addToTerminal('sentinelone-output', 'SentinelOne connection successful', 'success');
-        } else {
-          addToTerminal('sentinelone-output', 'SentinelOne connection failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('sentinelone-output', 'Connection test failed: ' + error.message, 'error');
       }
     }
 
@@ -2731,7 +2437,40 @@
       }
     });
 
-    // Remove duplicate window assignments since functions are now global
+    // Test SentinelOne connection
+    async function testSentinelConnection() {
+      const baseUrl = document.getElementById('sentinel-url').value;
+      const apiToken = document.getElementById('sentinel-token').value;
+      
+      if (!baseUrl || !apiToken) {
+        addToTerminal('sentinelone-output', 'Please enter both Base URL and API Token', 'error');
+        return;
+      }
+      
+      try {
+        addToTerminal('sentinelone-output', 'Testing SentinelOne connection...', 'info');
+        
+        const response = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            service: 'sentinelone', 
+            url: baseUrl,
+            token: apiToken
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('sentinelone-output', 'SentinelOne connection successful', 'success');
+        } else {
+          addToTerminal('sentinelone-output', 'SentinelOne connection failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('sentinelone-output', 'Connection test failed: ' + error.message, 'error');
+      }
+    }
   </script>
 </body>
 </html>

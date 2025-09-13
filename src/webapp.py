@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Form, Query
 from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import Optional
 import requests, os, json, mimetypes
 from datetime import datetime
@@ -22,6 +23,11 @@ templates = Jinja2Templates(directory="templates")
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve favicon"""
+    return FileResponse("static/favicon.ico")
+
 # small helper: require auth (session kept simple in memory)
 SESSION = {"auth": False}
 def get_pin():
@@ -29,7 +35,7 @@ def get_pin():
         cfg = load_config()
     except Exception:
         return "tOOr12345*"
-    pin = cfg.get("web", {}).get("pin") or cfg.get("http", {}).get("api_key")
+    pin = cfg.get("web", {}).get("pin")
     return str(pin) if pin else "tOOr12345*"
 
 def require_auth_redirect():
@@ -58,7 +64,7 @@ async def dashboard(request: Request):
     if r:
         return r
     cfg = safe_load_cfg()
-    return templates.TemplateResponse("dashboard.html", {"request": request, "config": cfg})
+    return templates.TemplateResponse("index.html", {"request": request, "config": cfg})
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
@@ -78,14 +84,13 @@ async def logout():
     log_info("User logged out")
     return RedirectResponse("/login", status_code=303)
 
-# ------------- config page (all channels) -------------
+# ------------- config page (redirect to main dashboard) -------------
 @app.get("/config", response_class=HTMLResponse)
 async def config_page(request: Request):
     r = require_auth_redirect()
     if r:
         return r
-    cfg = safe_load_cfg()
-    return templates.TemplateResponse("config.html", {"request": request, "config": cfg})
+    return RedirectResponse("/", status_code=303)
 
 @app.post("/config")
 async def save_config_form(request: Request, 
@@ -116,13 +121,11 @@ async def save_config_form(request: Request,
 
 @app.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
-    """Notifications settings page"""
+    """Notifications settings page - redirect to main dashboard"""
     r = require_auth_redirect()
     if r:
         return r
-    
-    cfg = safe_load_cfg()
-    return templates.TemplateResponse("notifications.html", {"request": request, "config": cfg})
+    return RedirectResponse("/", status_code=303)
 
 @app.post("/api/notifications")
 async def save_notifications(request: Request):
@@ -391,13 +394,11 @@ async def get_backups(request: Request, limit: int = 20, offset: int = 0, search
 
 @app.get("/management", response_class=HTMLResponse)
 async def management_page(request: Request):
-    """Management page"""
+    """Management page - redirect to main dashboard"""
     r = require_auth_redirect()
     if r:
         return r
-    
-    cfg = safe_load_cfg()
-    return templates.TemplateResponse("management.html", {"request": request, "config": cfg})
+    return RedirectResponse("/", status_code=303)
 
 @app.get("/api/processes")
 async def get_processes(request: Request):
@@ -538,13 +539,19 @@ async def test_connection(request: Request):
     
     try:
         data = await request.json()
-        connection_type = data.get('type')
+        connection_type = data.get('service') or data.get('type')
         
-        if connection_type == 'sentinel':
-            cfg = safe_load_cfg()
-            sentinel_cfg = cfg.get('sentinelone', {})
-            base_url = sentinel_cfg.get('base_url')
-            api_token = sentinel_cfg.get('api_token')
+        if connection_type == 'sentinelone' or connection_type == 'sentinel':
+            # Use provided URL and token from request, or fall back to config
+            base_url = data.get('url') or data.get('base_url')
+            api_token = data.get('token') or data.get('api_token')
+            
+            # If not provided in request, get from config
+            if not base_url or not api_token:
+                cfg = safe_load_cfg()
+                sentinel_cfg = cfg.get('sentinelone', {})
+                base_url = base_url or sentinel_cfg.get('base_url')
+                api_token = api_token or sentinel_cfg.get('api_token')
             
             if not base_url or not api_token:
                 return JSONResponse({"error": "SentinelOne configuration missing"}, status_code=400)
@@ -581,6 +588,32 @@ async def test_connection(request: Request):
     except Exception as e:
         log_error(f"Connection test failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/whatsapp/sessions")
+async def get_whatsapp_sessions(request: Request):
+    """Get WhatsApp sessions from gateway"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Get WhatsApp gateway URL from config
+        cfg = safe_load_cfg()
+        gateway_config = cfg.get('whatsapp_gateway', {})
+        gateway_url = gateway_config.get('base_url', 'http://localhost:5013')
+        
+        import requests
+        response = requests.get(f'{gateway_url}/api/sessions', timeout=10)
+        
+        if response.status_code == 200:
+            sessions_data = response.json()
+            return JSONResponse({"success": True, "sessions": sessions_data})
+        else:
+            return JSONResponse({"success": False, "error": f"Gateway error: {response.status_code}", "sessions": []})
+            
+    except Exception as e:
+        log_error(f"Failed to get WhatsApp sessions: {e}")
+        return JSONResponse({"success": False, "error": str(e), "sessions": []})
 
 @app.get("/api/processes/logs")
 async def get_process_logs(request: Request):
@@ -961,98 +994,135 @@ async def get_wa_logs(session: str = Query(None)):
 
 @app.post("/api/test-notification")
 async def test_notification(request: Request):
-    """Send test notifications to all configured channels"""
+    """Send test notifications to specific channels with custom config"""
     r = require_auth_redirect()
     if r:
-        return r
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        notification_type = data.get('type')
+        message = data.get('message', 'Test notification from SentinelOne Monitor')
+        config = data.get('config', {})
+        
+        if notification_type == 'telegram':
+            # Test Telegram with specific config
+            token = config.get('token')
+            chat_id = config.get('chat_id')
+            
+            if not token or not chat_id:
+                return JSONResponse({"success": False, "error": "Missing Telegram token or chat_id"})
+            
+            try:
+                from notifier.telegram import TelegramNotifier
+                tn = TelegramNotifier(token=token, chat_id=chat_id)
+                tn.send(message)
+                log_success(f"Telegram test sent to {chat_id}")
+                return JSONResponse({"success": True, "message": "Telegram test notification sent"})
+            except Exception as e:
+                log_error(f"Telegram test failed: {e}")
+                return JSONResponse({"success": False, "error": str(e)})
+        
+        elif notification_type == 'teams':
+            # Test Teams with specific config
+            webhook_url = config.get('webhook_url')
+            
+            if not webhook_url:
+                return JSONResponse({"success": False, "error": "Missing Teams webhook URL"})
+            
+            try:
+                from notifier.teams import TeamsNotifier
+                tn = TeamsNotifier(webhook_url)
+                tn.send(message)
+                log_success("Teams test notification sent")
+                return JSONResponse({"success": True, "message": "Teams test notification sent"})
+            except Exception as e:
+                log_error(f"Teams test failed: {e}")
+                return JSONResponse({"success": False, "error": str(e)})
+        
+        elif notification_type == 'whatsapp':
+            # Test WhatsApp with specific config
+            gateway_url = config.get('gateway_url')
+            session_name = config.get('session_name')
+            recipient = config.get('recipient')
+            
+            if not gateway_url or not session_name or not recipient:
+                return JSONResponse({"success": False, "error": "Missing WhatsApp configuration"})
+            
+            try:
+                wb = get_whatsapp_bridge()
+                wb.base_url = gateway_url
+                wb.session = session_name
+                result = wb.send_message(recipient, message)
+                
+                if result.get('success'):
+                    log_success(f"WhatsApp test sent to {recipient}")
+                    return JSONResponse({"success": True, "message": "WhatsApp test notification sent"})
+                else:
+                    return JSONResponse({"success": False, "error": result.get('error', 'Unknown error')})
+            except Exception as e:
+                log_error(f"WhatsApp test failed: {e}")
+                return JSONResponse({"success": False, "error": str(e)})
+        
+        else:
+            return JSONResponse({"success": False, "error": "Unknown notification type"})
+        
+    except Exception as e:
+        log_error(f"Test notification error: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/config/save")
+async def save_config_api(request: Request):
+    """Save configuration via API"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
     try:
         data = await request.json()
         cfg = safe_load_cfg()
         
-        # Extract test data
-        agent = data.get("agent", "TEST-AGENT")
-        threat = data.get("threat", "Test Threat Detection")
-        timestamp = data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        file_path = data.get("file", "test_alert.json")
+        # Update configuration with new data
+        if "sentinelone" in data:
+            cfg["sentinelone"] = cfg.get("sentinelone", {})
+            cfg["sentinelone"].update(data["sentinelone"])
         
-        # Template variables
-        template_vars = {
-            "agent": agent,
-            "threat": threat,
-            "timestamp": timestamp,
-            "file": file_path
-        }
+        if "channels" in data:
+            cfg["channels"] = cfg.get("channels", {})
+            cfg["channels"].update(data["channels"])
         
-        def format_template(template, variables):
-            """Replace template variables with actual values"""
-            for key, value in variables.items():
-                template = template.replace(f"{{{{{key}}}}}", str(value))
-            return template
-
-        results = {"whatsapp": False, "telegram": False, "teams": False}
+        if "whatsapp_gateway" in data:
+            cfg["whatsapp_gateway"] = cfg.get("whatsapp_gateway", {})
+            cfg["whatsapp_gateway"].update(data["whatsapp_gateway"])
         
-        # WhatsApp test
-        try:
-            wa_settings = cfg.get("notifications", {}).get("whatsapp", {})
-            if wa_settings.get("session") and wa_settings.get("recipients"):
-                session = wa_settings.get("session", "default")
-                recipients = wa_settings.get("recipients", [])
-                template = wa_settings.get("template", "🚨 *Test Alert*\n\n*Agent:* {{agent}}\n*Threat:* {{threat}}\n*Time:* {{timestamp}}")
-                
-                message = format_template(template, template_vars)
-                
-                wb = get_whatsapp_bridge()
-                wb.session = session
-                result = wb.send_message(recipients[0], f"[TEST] {message}")
-                results["whatsapp"] = result.get('success', False)
-                log_info(f"WhatsApp test notification sent: {results['whatsapp']}")
-        except Exception as e:
-            log_error(f"WhatsApp test failed: {e}")
-
-        # Telegram test
-        try:
-            tg_settings = cfg.get("notifications", {}).get("telegram", {})
-            if tg_settings.get("bot_token") and tg_settings.get("chat_ids"):
-                bot_token = tg_settings.get("bot_token")
-                chat_ids = tg_settings.get("chat_ids", [])
-                template = tg_settings.get("template", "🚨 <b>Test Alert</b>\n\n<b>Agent:</b> {{agent}}\n<b>Threat:</b> {{threat}}\n<b>Time:</b> {{timestamp}}")
-                
-                message = format_template(template, template_vars)
-                
-                from notifier.telegram import TelegramNotifier
-                tn = TelegramNotifier(token=bot_token, chat_id=chat_ids[0])
-                tn.send(f"[TEST] {message}")
-                results["telegram"] = True
-                log_info("Telegram test notification sent")
-        except Exception as e:
-            log_error(f"Telegram test failed: {e}")
-
-        # Teams test
-        try:
-            teams_settings = cfg.get("notifications", {}).get("teams", {})
-            if teams_settings.get("webhook_urls"):
-                webhook_urls = teams_settings.get("webhook_urls", [])
-                template = teams_settings.get("template", "🚨 Test Alert\n\nAgent: {{agent}}\nThreat: {{threat}}\nTime: {{timestamp}}")
-                
-                message = format_template(template, template_vars)
-                
-                from notifier.teams import TeamsNotifier
-                tn = TeamsNotifier(webhook_urls[0])
-                tn.send(f"[TEST] {message}")
-                results["teams"] = True
-                log_info("Teams test notification sent")
-        except Exception as e:
-            log_error(f"Teams test failed: {e}")
-
-        success_count = sum(results.values())
-        return JSONResponse({
-            "success": success_count > 0,
-            "message": f"Test sent to {success_count} channel(s)",
-            "results": results
-        })
+        if "polling" in data:
+            cfg["polling"] = cfg.get("polling", {})
+            cfg["polling"].update(data["polling"])
         
+        if "backup" in data:
+            cfg["backup"] = cfg.get("backup", {})
+            cfg["backup"].update(data["backup"])
+        
+        save_config(cfg)
+        log_success("Configuration saved via API")
+        return JSONResponse({"success": True, "message": "Configuration saved successfully"})
+    
     except Exception as e:
-        log_error(f"Test notification error: {e}")
+        log_error(f"Failed to save config via API: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/config")
+async def get_config_api(request: Request):
+    """Get current configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = safe_load_cfg()
+        return JSONResponse({"success": True, "config": cfg})
+    except Exception as e:
+        log_error(f"Failed to get config: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.get("/api/logs/{target}")
@@ -1269,3 +1339,715 @@ async def save_wa_config(request: Request):
     except Exception as e:
         log_error(f"Failed to save WhatsApp config: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+# ------------- SentinelOne Advanced API Routes -------------
+@app.get("/sentinelone-advanced", response_class=HTMLResponse)
+async def sentinelone_advanced_page(request: Request):
+    """SentinelOne Advanced Configuration Page"""
+    r = require_auth_redirect()
+    if r:
+        return r
+    cfg = safe_load_cfg()
+    return templates.TemplateResponse("sentinelone-advanced.html", {"request": request, "config": cfg})
+
+@app.post("/api/sentinel/test-endpoint")
+async def test_sentinel_endpoint(request: Request):
+    """Test SentinelOne API endpoint"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        endpoint = data.get('endpoint')
+        
+        cfg = safe_load_cfg()
+        sentinel_cfg = cfg.get('sentinelone', {})
+        base_url = sentinel_cfg.get('base_url')
+        api_token = sentinel_cfg.get('api_token')
+        
+        if not base_url or not api_token:
+            return JSONResponse({"success": False, "error": "SentinelOne configuration missing"})
+        
+        # Test the endpoint
+        headers = {'Authorization': f'ApiToken {api_token}'}
+        full_url = f'{base_url.rstrip("/")}{endpoint}'
+        
+        response = requests.get(full_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            log_success(f"SentinelOne endpoint test successful: {endpoint}")
+            return JSONResponse({"success": True, "status_code": response.status_code})
+        else:
+            log_error(f"SentinelOne endpoint test failed: {endpoint} - {response.status_code}")
+            return JSONResponse({"success": False, "error": f"HTTP {response.status_code}", "status_code": response.status_code})
+            
+    except Exception as e:
+        log_error(f"SentinelOne endpoint test error: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/sentinel/get-data")
+async def get_sentinel_data(request: Request):
+    """Get data from SentinelOne API endpoint"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        endpoint = data.get('endpoint')
+        limit = data.get('limit', 10)
+        
+        cfg = safe_load_cfg()
+        sentinel_cfg = cfg.get('sentinelone', {})
+        base_url = sentinel_cfg.get('base_url')
+        api_token = sentinel_cfg.get('api_token')
+        
+        if not base_url or not api_token:
+            return JSONResponse({"success": False, "error": "SentinelOne configuration missing"})
+        
+        # Get data from endpoint
+        headers = {'Authorization': f'ApiToken {api_token}'}
+        full_url = f'{base_url.rstrip("/")}{endpoint}'
+        params = {'limit': limit}
+        
+        response = requests.get(full_url, headers=headers, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            log_success(f"SentinelOne data retrieved from: {endpoint}")
+            return JSONResponse({"success": True, "data": response_data})
+        else:
+            log_error(f"SentinelOne data retrieval failed: {endpoint} - {response.status_code}")
+            return JSONResponse({"success": False, "error": f"HTTP {response.status_code}"})
+            
+    except Exception as e:
+        log_error(f"SentinelOne data retrieval error: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/sentinel/save-polling-config")
+async def save_polling_config(request: Request):
+    """Save SentinelOne polling configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        
+        cfg = safe_load_cfg()
+        if 'polling' not in cfg:
+            cfg['polling'] = {}
+        
+        # Update polling configuration
+        cfg['polling']['interval_seconds'] = int(data.get('interval', 60))
+        cfg['polling']['timeout_seconds'] = int(data.get('timeout', 30))
+        cfg['polling']['retry_attempts'] = int(data.get('retries', 3))
+        cfg['polling']['endpoints'] = data.get('endpoints', [])
+        
+        # Parse filters JSON
+        try:
+            filters_str = data.get('filters', '{}')
+            cfg['polling']['filters'] = json.loads(filters_str) if filters_str else {}
+        except json.JSONDecodeError:
+            cfg['polling']['filters'] = {}
+        
+        save_config(cfg)
+        log_success("SentinelOne polling configuration saved")
+        
+        return JSONResponse({"success": True, "message": "Polling configuration saved successfully"})
+        
+    except Exception as e:
+        log_error(f"Failed to save polling configuration: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/sentinel/test-polling")
+async def test_polling_config(request: Request):
+    """Test SentinelOne polling configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        
+        cfg = safe_load_cfg()
+        sentinel_cfg = cfg.get('sentinelone', {})
+        base_url = sentinel_cfg.get('base_url')
+        api_token = sentinel_cfg.get('api_token')
+        
+        if not base_url or not api_token:
+            return JSONResponse({"success": False, "error": "SentinelOne configuration missing"})
+        
+        # Test polling with provided configuration
+        headers = {'Authorization': f'ApiToken {api_token}'}
+        timeout = int(data.get('timeout', 30))
+        endpoints = data.get('endpoints', [])
+        
+        results = []
+        for endpoint in endpoints:
+            try:
+                full_url = f'{base_url.rstrip("/")}{endpoint}'
+                response = requests.get(full_url, headers=headers, timeout=timeout)
+                
+                results.append({
+                    "endpoint": endpoint,
+                    "success": response.status_code == 200,
+                    "status_code": response.status_code,
+                    "response_time": response.elapsed.total_seconds()
+                })
+            except Exception as e:
+                results.append({
+                    "endpoint": endpoint,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        success_count = sum(1 for r in results if r.get('success'))
+        log_success(f"Polling test completed: {success_count}/{len(results)} endpoints successful")
+        
+        return JSONResponse({
+            "success": success_count > 0,
+            "message": f"Polling test completed: {success_count}/{len(results)} endpoints successful",
+            "results": results
+        })
+        
+    except Exception as e:
+        log_error(f"Polling test error: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/save-config")
+async def save_backup_config(request: Request):
+    """Save backup configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        
+        cfg = safe_load_cfg()
+        if 'backup' not in cfg:
+            cfg['backup'] = {}
+        
+        # Update backup configuration
+        cfg['backup']['frequency'] = data.get('frequency', 'daily')
+        cfg['backup']['retention_days'] = int(data.get('retention', 30))
+        cfg['backup']['compression'] = data.get('compression', 'gzip')
+        cfg['backup']['location'] = data.get('location', './storage/backups')
+        cfg['backup']['types'] = data.get('types', {})
+        
+        save_config(cfg)
+        log_success("Backup configuration saved")
+        
+        return JSONResponse({"success": True, "message": "Backup configuration saved successfully"})
+        
+    except Exception as e:
+        log_error(f"Failed to save backup configuration: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/run-now")
+async def run_backup_now(request: Request):
+    """Run backup immediately"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        import sys
+        
+        # Run backup process
+        cmd = [sys.executable, 'run.py', '--backup']
+        process = subprocess.Popen(cmd, cwd='.', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Wait for process to complete (with timeout)
+        try:
+            stdout, stderr = process.communicate(timeout=60)
+            
+            if process.returncode == 0:
+                log_success("Manual backup completed successfully")
+                return JSONResponse({"success": True, "message": "Backup completed successfully"})
+            else:
+                error_msg = stderr.decode('utf-8') if stderr else "Unknown error"
+                log_error(f"Manual backup failed: {error_msg}")
+                return JSONResponse({"success": False, "error": f"Backup failed: {error_msg}"})
+                
+        except subprocess.TimeoutExpired:
+            process.kill()
+            log_error("Manual backup timed out")
+            return JSONResponse({"success": False, "error": "Backup timed out"})
+        
+    except Exception as e:
+        log_error(f"Failed to run backup: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/notifications/save-multi-config")
+async def save_multi_notification_config(request: Request):
+    """Save multi-session/multi-webhook notification configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        
+        cfg = safe_load_cfg()
+        if 'notifications' not in cfg:
+            cfg['notifications'] = {}
+        
+        # Save Telegram configurations
+        if 'telegram' in data:
+            cfg['notifications']['telegram'] = {
+                'enabled': data['telegram'].get('enabled', False),
+                'configs': data['telegram'].get('configs', []),
+                'default_config': data['telegram'].get('default_config', 0)
+            }
+        
+        # Save Teams configurations
+        if 'teams' in data:
+            cfg['notifications']['teams'] = {
+                'enabled': data['teams'].get('enabled', False),
+                'configs': data['teams'].get('configs', []),
+                'default_config': data['teams'].get('default_config', 0)
+            }
+        
+        # Save WhatsApp configurations
+        if 'whatsapp' in data:
+            cfg['notifications']['whatsapp'] = {
+                'enabled': data['whatsapp'].get('enabled', False),
+                'gateway_url': data['whatsapp'].get('gateway_url', ''),
+                'configs': data['whatsapp'].get('configs', []),
+                'default_config': data['whatsapp'].get('default_config', 0)
+            }
+        
+        save_config(cfg)
+        log_success("Multi-notification configuration saved")
+        
+        return JSONResponse({"success": True, "message": "Notification configuration saved successfully"})
+        
+    except Exception as e:
+        log_error(f"Failed to save notification configuration: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/notifications/test-config")
+async def test_notification_config(request: Request):
+    """Test specific notification configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        config_type = data.get('type')  # telegram, teams, whatsapp
+        config_data = data.get('config')
+        
+        test_message = "🧪 Test notification from SentinelOne Monitor\n\nThis is a connection test."
+        
+        if config_type == 'telegram':
+            bot_token = config_data.get('bot_token')
+            chat_id = config_data.get('chat_id')
+            
+            if not bot_token or not chat_id:
+                return JSONResponse({"success": False, "error": "Missing bot token or chat ID"})
+            
+            tn = TelegramNotifier(token=bot_token, chat_ids=[chat_id])
+            result = tn.test_connection()
+            
+            if result:
+                log_success(f"Telegram test successful for chat {chat_id}")
+                return JSONResponse({"success": True, "message": "Telegram connection successful"})
+            else:
+                return JSONResponse({"success": False, "error": "Telegram connection failed"})
+        
+        elif config_type == 'teams':
+            webhook_url = config_data.get('webhook_url')
+            
+            if not webhook_url:
+                return JSONResponse({"success": False, "error": "Missing webhook URL"})
+            
+            tn = TeamsNotifier(webhook_urls=[webhook_url])
+            result = tn.test_connection()
+            
+            if result:
+                log_success("Teams test successful")
+                return JSONResponse({"success": True, "message": "Teams connection successful"})
+            else:
+                return JSONResponse({"success": False, "error": "Teams connection failed"})
+        
+        elif config_type == 'whatsapp':
+            gateway_url = config_data.get('gateway_url')
+            session_name = config_data.get('session_name')
+            
+            if not gateway_url:
+                return JSONResponse({"success": False, "error": "Missing gateway URL"})
+            
+            wb = WhatsAppBridge(gateway_url, session_name or 'default')
+            result = wb.test_connection()
+            
+            if result.get('success'):
+                log_success(f"WhatsApp test successful for session {session_name}")
+                return JSONResponse({"success": True, "message": "WhatsApp connection successful"})
+            else:
+                return JSONResponse({"success": False, "error": result.get('error', 'WhatsApp connection failed')})
+        
+        else:
+            return JSONResponse({"success": False, "error": "Unknown configuration type"})
+        
+    except Exception as e:
+        log_error(f"Notification test error: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+# ------------- Polling and Backup Control API Routes -------------
+@app.post("/api/polling/save-config")
+async def save_polling_interval_config(request: Request):
+    """Save polling interval configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        interval = int(data.get('interval', 60))
+        interval_type = data.get('interval_type', 'minutes')
+        
+        # Convert to seconds
+        if interval_type == 'hours':
+            interval_seconds = interval * 3600
+        else:  # minutes
+            interval_seconds = interval * 60
+        
+        cfg = safe_load_cfg()
+        if 'polling' not in cfg:
+            cfg['polling'] = {}
+        
+        cfg['polling']['interval'] = interval
+        cfg['polling']['interval_type'] = interval_type
+        cfg['polling']['interval_seconds'] = interval_seconds
+        
+        save_config(cfg)
+        log_success(f"Polling interval saved: {interval} {interval_type}")
+        
+        return JSONResponse({"success": True, "message": "Polling configuration saved"})
+        
+    except Exception as e:
+        log_error(f"Failed to save polling config: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/polling/start")
+async def start_polling_service(request: Request):
+    """Start polling service"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        import sys
+        
+        # Start polling process
+        cmd = [sys.executable, 'run.py', '--polling']
+        subprocess.Popen(cmd, cwd='.', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        log_success("Polling service started")
+        return JSONResponse({"success": True, "message": "Polling service started"})
+        
+    except Exception as e:
+        log_error(f"Failed to start polling: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/polling/stop")
+async def stop_polling_service(request: Request):
+    """Stop polling service"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        try:
+            import psutil
+        except ImportError:
+            return JSONResponse({"error": "psutil not installed"}, status_code=500)
+        
+        stopped = False
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                if 'run.py --polling' in cmdline:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+                    stopped = True
+                    log_success(f"Stopped polling process (PID: {proc.info['pid']})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        if not stopped:
+            return JSONResponse({"error": "No polling process found"}, status_code=404)
+        
+        return JSONResponse({"success": True, "message": "Polling service stopped"})
+        
+    except Exception as e:
+        log_error(f"Failed to stop polling: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/save-config")
+async def save_backup_interval_config(request: Request):
+    """Save backup interval configuration"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        interval = int(data.get('interval', 1))
+        interval_type = data.get('interval_type', 'days')
+        
+        cfg = safe_load_cfg()
+        if 'backup' not in cfg:
+            cfg['backup'] = {}
+        
+        cfg['backup']['interval'] = interval
+        cfg['backup']['interval_type'] = interval_type
+        
+        save_config(cfg)
+        log_success(f"Backup interval saved: {interval} {interval_type}")
+        
+        return JSONResponse({"success": True, "message": "Backup configuration saved"})
+        
+    except Exception as e:
+        log_error(f"Failed to save backup config: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/start")
+async def start_backup_service(request: Request):
+    """Start backup service"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        import sys
+        
+        # Start backup process
+        cmd = [sys.executable, 'run.py', '--backup']
+        subprocess.Popen(cmd, cwd='.', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        log_success("Backup service started")
+        return JSONResponse({"success": True, "message": "Backup service started"})
+        
+    except Exception as e:
+        log_error(f"Failed to start backup: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/stop")
+async def stop_backup_service(request: Request):
+    """Stop backup service"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        try:
+            import psutil
+        except ImportError:
+            return JSONResponse({"error": "psutil not installed"}, status_code=500)
+        
+        stopped = False
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                if 'run.py --backup' in cmdline:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+                    stopped = True
+                    log_success(f"Stopped backup process (PID: {proc.info['pid']})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        if not stopped:
+            return JSONResponse({"error": "No backup process found"}, status_code=404)
+        
+        return JSONResponse({"success": True, "message": "Backup service stopped"})
+        
+    except Exception as e:
+        log_error(f"Failed to stop backup: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/backup/run-now")
+async def run_backup_now(request: Request):
+    """Run backup immediately"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        import sys
+        
+        # Run backup once
+        cmd = [sys.executable, 'src/backup.py']
+        result = subprocess.run(cmd, cwd='.', capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0:
+            log_success("Manual backup completed successfully")
+            return JSONResponse({"success": True, "message": "Backup completed successfully", "output": result.stdout})
+        else:
+            log_error(f"Manual backup failed: {result.stderr}")
+            return JSONResponse({"success": False, "error": result.stderr or "Backup failed"})
+        
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"success": False, "error": "Backup operation timed out"})
+    except Exception as e:
+        log_error(f"Failed to run manual backup: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/config/save")
+async def save_system_config(request: Request):
+    """Save system configuration with PIN validation"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        current_pin = data.get('current_pin')
+        new_pin = data.get('new_pin')
+        confirm_pin = data.get('confirm_pin')
+        base_url = data.get('base_url')
+        port = data.get('port')
+        
+        cfg = safe_load_cfg()
+        
+        # Validate current PIN
+        if current_pin != get_pin():
+            return JSONResponse({"success": False, "error": "Current PIN is incorrect"})
+        
+        # Validate new PIN if provided
+        if new_pin:
+            if new_pin != confirm_pin:
+                return JSONResponse({"success": False, "error": "New PIN confirmation does not match"})
+            if len(new_pin) < 4:
+                return JSONResponse({"success": False, "error": "PIN must be at least 4 characters"})
+        
+        # Update configuration
+        if 'web' not in cfg:
+            cfg['web'] = {}
+        
+        if base_url:
+            cfg['web']['base_url'] = base_url
+        if port:
+            cfg['web']['port'] = int(port)
+        if new_pin:
+            cfg['web']['pin'] = new_pin
+        
+        save_config(cfg)
+        log_success("System configuration updated")
+        
+        return JSONResponse({"success": True, "message": "Configuration saved successfully"})
+        
+    except Exception as e:
+        log_error(f"Failed to save system config: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/logs/tree")
+async def get_logs_tree(request: Request):
+    """Get logs directory tree structure"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import os
+        
+        def build_tree(path, base_path=""):
+            tree = []
+            if not os.path.exists(path):
+                return tree
+            
+            for item in sorted(os.listdir(path)):
+                if item.startswith('.'):
+                    continue
+                    
+                item_path = os.path.join(path, item)
+                relative_path = os.path.join(base_path, item) if base_path else item
+                
+                if os.path.isdir(item_path):
+                    tree.append({
+                        "name": item,
+                        "type": "folder",
+                        "path": relative_path,
+                        "children": build_tree(item_path, relative_path)
+                    })
+                else:
+                    stat = os.stat(item_path)
+                    tree.append({
+                        "name": item,
+                        "type": "file",
+                        "path": relative_path,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime
+                    })
+            
+            return tree
+        
+        logs_tree = build_tree("logs")
+        return JSONResponse({"success": True, "tree": logs_tree})
+        
+    except Exception as e:
+        log_error(f"Failed to get logs tree: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/storage/tree")
+async def get_storage_tree(request: Request):
+    """Get storage directory tree structure"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import os
+        
+        def build_tree(path, base_path=""):
+            tree = []
+            if not os.path.exists(path):
+                return tree
+            
+            for item in sorted(os.listdir(path)):
+                if item.startswith('.'):
+                    continue
+                    
+                item_path = os.path.join(path, item)
+                relative_path = os.path.join(base_path, item) if base_path else item
+                
+                if os.path.isdir(item_path):
+                    tree.append({
+                        "name": item,
+                        "type": "folder",
+                        "path": relative_path,
+                        "children": build_tree(item_path, relative_path)
+                    })
+                else:
+                    stat = os.stat(item_path)
+                    tree.append({
+                        "name": item,
+                        "type": "file",
+                        "path": relative_path,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime
+                    })
+            
+            return tree
+        
+        storage_tree = build_tree("storage")
+        return JSONResponse({"success": True, "tree": storage_tree})
+        
+    except Exception as e:
+        log_error(f"Failed to get storage tree: {e}")
+        return JSONResponse({"success": False, "error": str(e)})

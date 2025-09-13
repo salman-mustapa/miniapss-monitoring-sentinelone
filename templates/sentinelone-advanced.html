@@ -1,0 +1,661 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SentinelOne Advanced Configuration</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0e0f;
+      --bg-secondary: #0f1419;
+      --bg-tertiary: #1a1f24;
+      --accent-green: #00ff41;
+      --accent-cyan: #00ffff;
+      --text-primary: #00ff41;
+      --text-secondary: #8aff9b;
+      --border-color: #0f4;
+    }
+    
+    body { 
+      background: var(--bg-primary); 
+      color: var(--text-primary); 
+      font-family: "Courier New", monospace; 
+      margin: 0;
+      overflow-x: hidden;
+    }
+    
+    .hacker-header {
+      background: linear-gradient(90deg, var(--bg-secondary), var(--bg-tertiary));
+      border-bottom: 2px solid var(--accent-green);
+      padding: 15px 20px;
+      box-shadow: 0 2px 10px rgba(0, 255, 65, 0.3);
+    }
+    
+    .hacker-title {
+      color: var(--accent-green);
+      font-size: 1.8rem;
+      font-weight: bold;
+      text-shadow: 0 0 10px var(--accent-green);
+      margin: 0;
+    }
+    
+    .nav-tabs {
+      border-bottom: 2px solid var(--accent-green);
+      background: var(--bg-secondary);
+      margin: 0;
+    }
+    
+    .nav-tabs .nav-link {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      padding: 15px 25px;
+      margin-right: 2px;
+      transition: all 0.3s ease;
+    }
+    
+    .nav-tabs .nav-link:hover {
+      color: var(--accent-green);
+      background: rgba(0, 255, 65, 0.1);
+      text-shadow: 0 0 5px var(--accent-green);
+    }
+    
+    .nav-tabs .nav-link.active {
+      background: var(--accent-green);
+      color: var(--bg-primary);
+      border-bottom: 3px solid var(--accent-cyan);
+      text-shadow: none;
+    }
+    
+    .tab-content {
+      background: var(--bg-primary);
+      min-height: calc(100vh - 140px);
+      padding: 20px;
+    }
+    
+    .hacker-card {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0, 255, 65, 0.2);
+      transition: all 0.3s ease;
+    }
+    
+    .hacker-card:hover {
+      box-shadow: 0 6px 20px rgba(0, 255, 65, 0.4);
+      transform: translateY(-2px);
+    }
+    
+    .form-control, .form-select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-family: "Courier New", monospace;
+    }
+    
+    .form-control:focus, .form-select:focus {
+      background: var(--bg-secondary);
+      border-color: var(--accent-green);
+      color: var(--text-primary);
+      box-shadow: 0 0 0 0.2rem rgba(0, 255, 65, 0.25);
+    }
+    
+    .btn-hacker {
+      background: linear-gradient(45deg, var(--accent-green), var(--accent-cyan));
+      border: none;
+      color: var(--bg-primary);
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      padding: 8px 16px;
+      border-radius: 4px;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-hacker:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 15px rgba(0, 255, 65, 0.5);
+      color: var(--bg-primary);
+    }
+    
+    .terminal-output {
+      background: #000;
+      color: var(--accent-green);
+      font-family: "Courier New", monospace;
+      padding: 15px;
+      border-radius: 8px;
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--accent-green);
+      white-space: pre-wrap;
+      box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.3);
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-online { background: var(--accent-green); box-shadow: 0 0 5px var(--accent-green); }
+    .status-offline { background: #ff4444; box-shadow: 0 0 5px #ff4444; }
+    .status-warning { background: #ffaa00; box-shadow: 0 0 5px #ffaa00; }
+    
+    .endpoint-item {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 10px;
+    }
+    
+    .endpoint-item:hover {
+      background: var(--bg-secondary);
+      box-shadow: 0 2px 8px rgba(0, 255, 65, 0.2);
+    }
+    
+    .data-viewer {
+      background: #000;
+      color: var(--accent-green);
+      font-family: "Courier New", monospace;
+      padding: 15px;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid var(--accent-green);
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="hacker-header">
+    <h1 class="hacker-title">
+      <i class="fas fa-shield-virus"></i> SENTINELONE ADVANCED CONFIG
+      <span style="font-size: 0.6em; color: var(--accent-cyan);">[ADVANCED]</span>
+    </h1>
+  </div>
+
+  <ul class="nav nav-tabs" id="advancedTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="polling-tab" data-bs-toggle="tab" data-bs-target="#polling" type="button" role="tab">
+        <i class="fas fa-sync-alt"></i> POLLING CONFIG
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button" role="tab">
+        <i class="fas fa-database"></i> BACKUP CONFIG
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="endpoints-tab" data-bs-toggle="tab" data-bs-target="#endpoints" type="button" role="tab">
+        <i class="fas fa-plug"></i> ENDPOINTS
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="advancedTabContent">
+    <!-- Polling Configuration Tab -->
+    <div class="tab-pane fade show active" id="polling" role="tabpanel">
+      <div class="hacker-card">
+        <h5><i class="fas fa-sync-alt"></i> POLLING CONFIGURATION</h5>
+        <form id="polling-config-form">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">POLLING INTERVAL (seconds)</label>
+              <input type="number" class="form-control" id="polling-interval" value="60" min="10" max="3600">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">TIMEOUT (seconds)</label>
+              <input type="number" class="form-control" id="polling-timeout" value="30" min="5" max="300">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">RETRY ATTEMPTS</label>
+              <input type="number" class="form-control" id="polling-retries" value="3" min="1" max="10">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">POLLING ENDPOINTS</label>
+              <select class="form-select" id="polling-endpoints" multiple>
+                <option value="/web/api/v2.1/threats">Threats</option>
+                <option value="/web/api/v2.1/activities">Activities</option>
+                <option value="/web/api/v2.1/alerts">Alerts</option>
+                <option value="/web/api/v2.1/agents">Agents</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">FILTER CRITERIA</label>
+              <textarea class="form-control" id="polling-filters" rows="4" placeholder='{"resolved": false, "limit": 100}'></textarea>
+            </div>
+          </div>
+          <div class="mt-3">
+            <button type="submit" class="btn btn-hacker">
+              <i class="fas fa-save"></i> SAVE POLLING CONFIG
+            </button>
+            <button type="button" class="btn btn-hacker ms-2" onclick="testPollingConfig()">
+              <i class="fas fa-play"></i> TEST POLLING
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Backup Configuration Tab -->
+    <div class="tab-pane fade" id="backup" role="tabpanel">
+      <div class="hacker-card">
+        <h5><i class="fas fa-database"></i> BACKUP CONFIGURATION</h5>
+        <form id="backup-config-form">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">BACKUP FREQUENCY</label>
+              <select class="form-control" id="backup-frequency">
+                <option value="hourly">HOURLY</option>
+                <option value="daily" selected>DAILY</option>
+                <option value="weekly">WEEKLY</option>
+                <option value="monthly">MONTHLY</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">RETENTION DAYS</label>
+              <input type="number" class="form-control" id="backup-retention" value="30" min="1" max="365">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">COMPRESSION</label>
+              <select class="form-control" id="backup-compression">
+                <option value="none">NONE</option>
+                <option value="gzip" selected>GZIP</option>
+                <option value="bzip2">BZIP2</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">BACKUP LOCATION</label>
+              <input type="text" class="form-control" id="backup-location" value="./storage/backups">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">BACKUP TYPES</label>
+              <div class="mt-2">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="backup-events" checked>
+                  <label class="form-check-label">Events</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="backup-alerts" checked>
+                  <label class="form-check-label">Alerts</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="backup-logs" checked>
+                  <label class="form-check-label">Logs</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="backup-config">
+                  <label class="form-check-label">Configuration</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <button type="submit" class="btn btn-hacker">
+              <i class="fas fa-save"></i> SAVE BACKUP CONFIG
+            </button>
+            <button type="button" class="btn btn-hacker ms-2" onclick="runBackupNow()">
+              <i class="fas fa-play"></i> RUN BACKUP NOW
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Endpoints Configuration Tab -->
+    <div class="tab-pane fade" id="endpoints" role="tabpanel">
+      <div class="hacker-card">
+        <h5><i class="fas fa-plug"></i> SENTINELONE API ENDPOINTS</h5>
+        <div class="mb-3">
+          <input type="text" class="form-control" id="endpoint-search" placeholder="Search endpoints...">
+        </div>
+        <div id="endpoints-container">
+          <!-- Agents Endpoint -->
+          <div class="endpoint-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6><i class="fas fa-desktop"></i> AGENTS</h6>
+              <div>
+                <button class="btn btn-hacker btn-sm me-1" onclick="testEndpoint('agents')">
+                  <i class="fas fa-plug"></i> TEST
+                </button>
+                <button class="btn btn-hacker btn-sm" onclick="viewEndpointData('agents')">
+                  <i class="fas fa-eye"></i> VIEW DATA
+                </button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <strong>Endpoint:</strong> <code>/web/api/v2.1/agents</code>
+            </div>
+            <div class="mb-2">
+              <strong>Description:</strong> Get all agents and their status
+            </div>
+            <div id="agents-data" class="data-viewer d-none"></div>
+          </div>
+
+          <!-- Threats Endpoint -->
+          <div class="endpoint-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6><i class="fas fa-bug"></i> THREATS</h6>
+              <div>
+                <button class="btn btn-hacker btn-sm me-1" onclick="testEndpoint('threats')">
+                  <i class="fas fa-plug"></i> TEST
+                </button>
+                <button class="btn btn-hacker btn-sm" onclick="viewEndpointData('threats')">
+                  <i class="fas fa-eye"></i> VIEW DATA
+                </button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <strong>Endpoint:</strong> <code>/web/api/v2.1/threats</code>
+            </div>
+            <div class="mb-2">
+              <strong>Description:</strong> Get detected threats and malware
+            </div>
+            <div id="threats-data" class="data-viewer d-none"></div>
+          </div>
+
+          <!-- Activities Endpoint -->
+          <div class="endpoint-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6><i class="fas fa-list"></i> ACTIVITIES</h6>
+              <div>
+                <button class="btn btn-hacker btn-sm me-1" onclick="testEndpoint('activities')">
+                  <i class="fas fa-plug"></i> TEST
+                </button>
+                <button class="btn btn-hacker btn-sm" onclick="viewEndpointData('activities')">
+                  <i class="fas fa-eye"></i> VIEW DATA
+                </button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <strong>Endpoint:</strong> <code>/web/api/v2.1/activities</code>
+            </div>
+            <div class="mb-2">
+              <strong>Description:</strong> Get system activities and events
+            </div>
+            <div id="activities-data" class="data-viewer d-none"></div>
+          </div>
+
+          <!-- Alerts Endpoint -->
+          <div class="endpoint-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6><i class="fas fa-exclamation-triangle"></i> ALERTS</h6>
+              <div>
+                <button class="btn btn-hacker btn-sm me-1" onclick="testEndpoint('alerts')">
+                  <i class="fas fa-plug"></i> TEST
+                </button>
+                <button class="btn btn-hacker btn-sm" onclick="viewEndpointData('alerts')">
+                  <i class="fas fa-eye"></i> VIEW DATA
+                </button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <strong>Endpoint:</strong> <code>/web/api/v2.1/alerts</code>
+            </div>
+            <div class="mb-2">
+              <strong>Description:</strong> Get security alerts and notifications
+            </div>
+            <div id="alerts-data" class="data-viewer d-none"></div>
+          </div>
+
+          <!-- System Info Endpoint -->
+          <div class="endpoint-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6><i class="fas fa-info-circle"></i> SYSTEM INFO</h6>
+              <div>
+                <button class="btn btn-hacker btn-sm me-1" onclick="testEndpoint('system')">
+                  <i class="fas fa-plug"></i> TEST
+                </button>
+                <button class="btn btn-hacker btn-sm" onclick="viewEndpointData('system')">
+                  <i class="fas fa-eye"></i> VIEW DATA
+                </button>
+              </div>
+            </div>
+            <div class="mb-2">
+              <strong>Endpoint:</strong> <code>/web/api/v2.1/system/info</code>
+            </div>
+            <div class="mb-2">
+              <strong>Description:</strong> Get SentinelOne system information
+            </div>
+            <div id="system-data" class="data-viewer d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const endpoints = {
+      agents: '/web/api/v2.1/agents',
+      threats: '/web/api/v2.1/threats',
+      activities: '/web/api/v2.1/activities',
+      alerts: '/web/api/v2.1/alerts',
+      system: '/web/api/v2.1/system/info'
+    };
+
+    async function testEndpoint(type) {
+      const button = event.target;
+      const originalText = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> TESTING...';
+      button.disabled = true;
+      
+      try {
+        const response = await fetch('/api/sentinel/test-endpoint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: endpoints[type] })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          button.innerHTML = '<i class="fas fa-check"></i> SUCCESS';
+          button.className = 'btn btn-success btn-sm me-1';
+          setTimeout(() => {
+            button.innerHTML = originalText;
+            button.className = 'btn btn-hacker btn-sm me-1';
+            button.disabled = false;
+          }, 2000);
+        } else {
+          button.innerHTML = '<i class="fas fa-times"></i> FAILED';
+          button.className = 'btn btn-danger btn-sm me-1';
+          setTimeout(() => {
+            button.innerHTML = originalText;
+            button.className = 'btn btn-hacker btn-sm me-1';
+            button.disabled = false;
+          }, 2000);
+        }
+      } catch (error) {
+        button.innerHTML = '<i class="fas fa-times"></i> ERROR';
+        button.className = 'btn btn-danger btn-sm me-1';
+        setTimeout(() => {
+          button.innerHTML = originalText;
+          button.className = 'btn btn-hacker btn-sm me-1';
+          button.disabled = false;
+        }, 2000);
+      }
+    }
+
+    async function viewEndpointData(type) {
+      const dataContainer = document.getElementById(`${type}-data`);
+      
+      if (dataContainer.classList.contains('d-none')) {
+        dataContainer.classList.remove('d-none');
+        dataContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading data...</div>';
+        
+        try {
+          const response = await fetch('/api/sentinel/get-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: endpoints[type] })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            dataContainer.innerHTML = JSON.stringify(data.data, null, 2);
+          } else {
+            dataContainer.innerHTML = `Error: ${data.error}`;
+          }
+        } catch (error) {
+          dataContainer.innerHTML = `Error: ${error.message}`;
+        }
+      } else {
+        dataContainer.classList.add('d-none');
+      }
+    }
+
+    async function testPollingConfig() {
+      const button = event.target;
+      const originalText = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> TESTING...';
+      button.disabled = true;
+      
+      const config = {
+        interval: document.getElementById('polling-interval').value,
+        timeout: document.getElementById('polling-timeout').value,
+        retries: document.getElementById('polling-retries').value,
+        endpoints: Array.from(document.getElementById('polling-endpoints').selectedOptions).map(o => o.value),
+        filters: document.getElementById('polling-filters').value
+      };
+      
+      try {
+        const response = await fetch('/api/sentinel/test-polling', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Polling test successful!');
+        } else {
+          alert('Polling test failed: ' + data.error);
+        }
+      } catch (error) {
+        alert('Test failed: ' + error.message);
+      } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+      }
+    }
+
+    async function runBackupNow() {
+      const button = event.target;
+      const originalText = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> RUNNING...';
+      button.disabled = true;
+      
+      try {
+        const response = await fetch('/api/backup/run-now', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Backup completed successfully!');
+        } else {
+          alert('Backup failed: ' + data.error);
+        }
+      } catch (error) {
+        alert('Backup failed: ' + error.message);
+      } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+      }
+    }
+
+    // Form submissions
+    document.getElementById('polling-config-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const config = {
+        interval: document.getElementById('polling-interval').value,
+        timeout: document.getElementById('polling-timeout').value,
+        retries: document.getElementById('polling-retries').value,
+        endpoints: Array.from(document.getElementById('polling-endpoints').selectedOptions).map(o => o.value),
+        filters: document.getElementById('polling-filters').value
+      };
+      
+      try {
+        const response = await fetch('/api/sentinel/save-polling-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Polling configuration saved successfully!');
+        } else {
+          alert('Failed to save configuration: ' + data.error);
+        }
+      } catch (error) {
+        alert('Save failed: ' + error.message);
+      }
+    });
+
+    document.getElementById('backup-config-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const config = {
+        frequency: document.getElementById('backup-frequency').value,
+        retention: document.getElementById('backup-retention').value,
+        compression: document.getElementById('backup-compression').value,
+        location: document.getElementById('backup-location').value,
+        types: {
+          events: document.getElementById('backup-events').checked,
+          alerts: document.getElementById('backup-alerts').checked,
+          logs: document.getElementById('backup-logs').checked,
+          config: document.getElementById('backup-config').checked
+        }
+      };
+      
+      try {
+        const response = await fetch('/api/backup/save-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Backup configuration saved successfully!');
+        } else {
+          alert('Failed to save configuration: ' + data.error);
+        }
+      } catch (error) {
+        alert('Save failed: ' + error.message);
+      }
+    });
+
+    // Search functionality
+    document.getElementById('endpoint-search').addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      const endpoints = document.querySelectorAll('.endpoint-item');
+      
+      endpoints.forEach(endpoint => {
+        const text = endpoint.textContent.toLowerCase();
+        if (text.includes(searchTerm)) {
+          endpoint.style.display = 'block';
+        } else {
+          endpoint.style.display = 'none';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

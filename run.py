@@ -79,10 +79,10 @@ def run_backup_with_monitoring():
 def print_banner():
     """Print application banner"""
     banner = """
-    ╔═══════════════════════════════════════════════════════════╗
-    ║                 SENTINELONE MONITOR v2.0                  ║
-    ║                Advanced Security Monitoring                ║
-    ╚═══════════════════════════════════════════════════════════╝
+    +==========================================================+
+    |                 SENTINELONE MONITOR v2.0                |
+    |                Advanced Security Monitoring             |
+    +==========================================================+
     """
     print(banner)
 
