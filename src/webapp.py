@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import Optional
-import requests, os, json, mimetypes
+import requests, os, json, mimetypes, time, glob
 from datetime import datetime
 
 from src.config import load_config, save_config
@@ -18,6 +18,9 @@ from notifier.teams import TeamsNotifier
 logger = get_logger()
 app = FastAPI(title="SentinelOne Monitor v2.0", description="Advanced Security Monitoring System")
 templates = Jinja2Templates(directory="templates")
+
+# Track application start time for uptime calculation
+APP_START_TIME = time.perf_counter()
 
 # mount static if exists (css/js)
 if os.path.isdir("static"):
@@ -56,6 +59,99 @@ def safe_load_cfg():
             "polling": {"interval_seconds": 60},
             "web": {"pin": ""},
         }
+
+def safe_save_cfg(config_data):
+    """Safely save configuration with atomic write"""
+    try:
+        from src.config import save_config
+        save_config(config_data)
+        return True
+    except Exception as e:
+        log_error(f"Failed to save config: {e}")
+        return False
+
+def get_file_list(base_path, recursive=True, max_depth=5):
+    """Get file list with metadata for a directory"""
+    files = []
+    if not os.path.exists(base_path):
+        return files
+    
+    def scan_directory(path, current_depth=0):
+        if current_depth > max_depth:
+            return
+        
+        try:
+            for item in os.listdir(path):
+                item_path = os.path.join(path, item)
+                relative_path = os.path.relpath(item_path, base_path).replace("\\", "/")
+                
+                if os.path.isdir(item_path):
+                    # Count items in directory
+                    try:
+                        item_count = len(os.listdir(item_path))
+                    except:
+                        item_count = 0
+                    
+                    files.append({
+                        "name": item,
+                        "type": "directory",
+                        "path": relative_path,
+                        "full_path": item_path,
+                        "size": item_count,
+                        "modified": datetime.fromtimestamp(os.path.getmtime(item_path)).isoformat(),
+                        "depth": current_depth
+                    })
+                    
+                    if recursive:
+                        scan_directory(item_path, current_depth + 1)
+                else:
+                    files.append({
+                        "name": item,
+                        "type": "file",
+                        "path": relative_path,
+                        "full_path": item_path,
+                        "size": os.path.getsize(item_path),
+                        "modified": datetime.fromtimestamp(os.path.getmtime(item_path)).isoformat(),
+                        "depth": current_depth
+                    })
+        except Exception as e:
+            log_error(f"Error scanning directory {path}: {e}")
+    
+    scan_directory(base_path)
+    return files
+
+def read_file_preview(file_path, max_size=5120):
+    """Read file content for preview (max 5KB)"""
+    try:
+        if not os.path.exists(file_path):
+            return None, "File not found"
+        
+        file_size = os.path.getsize(file_path)
+        if file_size > max_size:
+            return None, f"File too large ({file_size} bytes, max {max_size})"
+        
+        # Determine file type
+        _, ext = os.path.splitext(file_path.lower())
+        
+        if ext in ['.json', '.txt', '.log', '.py', '.js', '.html', '.css', '.md']:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                return content, None
+        else:
+            return None, "Binary file - preview not available"
+    except Exception as e:
+        return None, str(e)
+
+def format_file_size(size_bytes):
+    """Format file size in human readable format"""
+    if size_bytes == 0:
+        return "0 B"
+    size_names = ["B", "KB", "MB", "GB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    return f"{size_bytes:.1f} {size_names[i]}"
 
 # ---------------- UI routes ----------------
 @app.get("/", response_class=HTMLResponse)
@@ -112,9 +208,12 @@ async def save_config_form(request: Request,
             cfg["web"] = {}
         cfg["web"]["pin"] = web_pin
         
-        save_config(cfg)
-        log_success("Configuration saved successfully")
-        return RedirectResponse(url="/config?saved=1", status_code=303)
+
+        if safe_save_cfg(cfg):
+            log_success("Configuration saved successfully")
+            return RedirectResponse(url="/config?saved=1", status_code=303)
+        else:
+            return RedirectResponse(url="/config?error=1", status_code=303)
     except Exception as e:
         log_error(f"Failed to save config: {e}")
         return RedirectResponse(url="/config?error=1", status_code=303)
@@ -562,9 +661,37 @@ async def test_connection(request: Request):
             response = requests.get(f'{base_url}/web/api/v2.1/system/info', headers=headers, timeout=10)
             
             if response.status_code == 200:
-                return JSONResponse({"success": True, "message": "SentinelOne connection successful"})
+                try:
+                    response_data = response.json()
+                    return JSONResponse({
+                        "success": True, 
+                        "message": "SentinelOne connection successful",
+                        "status_code": response.status_code,
+                        "response": response_data
+                    })
+                except:
+                    return JSONResponse({
+                        "success": True, 
+                        "message": "SentinelOne connection successful",
+                        "status_code": response.status_code,
+                        "response": response.text
+                    })
             else:
-                return JSONResponse({"error": f"SentinelOne API error: {response.status_code}"}, status_code=400)
+                try:
+                    error_data = response.json()
+                    return JSONResponse({
+                        "success": False,
+                        "error": f"SentinelOne API error: {response.status_code}",
+                        "status_code": response.status_code,
+                        "response": error_data
+                    }, status_code=400)
+                except:
+                    return JSONResponse({
+                        "success": False,
+                        "error": f"SentinelOne API error: {response.status_code}",
+                        "status_code": response.status_code,
+                        "response": response.text
+                    }, status_code=400)
                 
         elif connection_type == 'backup':
             import os
@@ -584,9 +711,362 @@ async def test_connection(request: Request):
             except Exception as e:
                 return JSONResponse({"error": f"Storage access failed: {str(e)}"}, status_code=400)
         
+        elif connection_type == 'telegram':
+            # Test Telegram bot connection
+            bot_token = data.get('bot_token')
+            chat_id = data.get('chat_id')
+            
+            if not bot_token or not chat_id:
+                return JSONResponse({"error": "Bot token and chat ID required"}, status_code=400)
+            
+            import requests
+            try:
+                # Test bot token validity
+                response = requests.get(f'https://api.telegram.org/bot{bot_token}/getMe', timeout=10)
+                if response.status_code == 200:
+                    bot_info = response.json()
+                    if bot_info.get('ok'):
+                        # Test sending a message
+                        test_msg = "🤖 SentinelOne Monitor - Connection Test"
+                        msg_response = requests.post(
+                            f'https://api.telegram.org/bot{bot_token}/sendMessage',
+                            json={'chat_id': chat_id, 'text': test_msg},
+                            timeout=10
+                        )
+                        if msg_response.status_code == 200:
+                            return JSONResponse({"success": True, "message": "Telegram connection successful"})
+                        else:
+                            return JSONResponse({"error": f"Failed to send test message: {msg_response.status_code}"}, status_code=400)
+                    else:
+                        return JSONResponse({"error": "Invalid bot token"}, status_code=400)
+                else:
+                    return JSONResponse({"error": f"Telegram API error: {response.status_code}"}, status_code=400)
+            except Exception as e:
+                return JSONResponse({"error": f"Telegram connection failed: {str(e)}"}, status_code=400)
+        
+        elif connection_type == 'teams':
+            # Test Microsoft Teams webhook
+            webhook_url = data.get('webhook_url')
+            
+            if not webhook_url:
+                return JSONResponse({"error": "Webhook URL required"}, status_code=400)
+            
+            import requests
+            try:
+                test_payload = {
+                    "@type": "MessageCard",
+                    "@context": "http://schema.org/extensions",
+                    "themeColor": "0076D7",
+                    "summary": "SentinelOne Monitor Test",
+                    "sections": [{
+                        "activityTitle": "🤖 SentinelOne Monitor",
+                        "activitySubtitle": "Connection Test",
+                        "text": "This is a test message to verify Teams integration."
+                    }]
+                }
+                
+                response = requests.post(webhook_url, json=test_payload, timeout=10)
+                if response.status_code == 200:
+                    return JSONResponse({"success": True, "message": "Teams webhook connection successful"})
+                else:
+                    return JSONResponse({"error": f"Teams webhook failed: {response.status_code}"}, status_code=400)
+            except Exception as e:
+                return JSONResponse({"error": f"Teams connection failed: {str(e)}"}, status_code=400)
+        
+        elif connection_type == 'whatsapp':
+            # Test WhatsApp gateway connection
+            gateway_url = data.get('gateway_url')
+            session_name = data.get('session_name', 'default')
+            
+            if not gateway_url:
+                cfg = safe_load_cfg()
+                gateway_url = cfg.get('whatsapp_gateway', {}).get('base_url', 'http://localhost:5013')
+            
+            import requests
+            try:
+                # Test gateway connectivity
+                response = requests.get(f'{gateway_url}/api/status', timeout=10)
+                if response.status_code == 200:
+                    # Test session status
+                    session_response = requests.get(f'{gateway_url}/api/session/{session_name}', timeout=10)
+                    if session_response.status_code == 200:
+                        session_data = session_response.json()
+                        if session_data.get('connected'):
+                            return JSONResponse({"success": True, "message": f"WhatsApp gateway and session '{session_name}' connected"})
+                        else:
+                            return JSONResponse({"success": True, "message": f"WhatsApp gateway connected, but session '{session_name}' not active"})
+                    else:
+                        return JSONResponse({"success": True, "message": "WhatsApp gateway connected, session status unknown"})
+                else:
+                    return JSONResponse({"error": f"WhatsApp gateway not responding: {response.status_code}"}, status_code=400)
+            except Exception as e:
+                return JSONResponse({"error": f"WhatsApp gateway connection failed: {str(e)}"}, status_code=400)
+        
         return JSONResponse({"error": "Unknown connection type"}, status_code=400)
     except Exception as e:
         log_error(f"Connection test failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/statistics")
+async def get_statistics(request: Request):
+    """Get system statistics"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Calculate uptime
+        uptime_seconds = int(time.perf_counter() - APP_START_TIME)
+        hours = uptime_seconds // 3600
+        minutes = (uptime_seconds % 3600) // 60
+        seconds = uptime_seconds % 60
+        uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Count threats detected from storage/alerts/
+        threats_detected = 0
+        alerts_path = "storage/alerts"
+        if os.path.exists(alerts_path):
+            threats_detected = len([f for f in os.listdir(alerts_path) if f.endswith('.json')])
+        
+        # Count alerts sent from logs (success notifications)
+        alerts_sent = 0
+        log_files = glob.glob("logs/*.log")
+        for log_file in log_files:
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    alerts_sent += content.count('SUCCESS') + content.count('notification sent')
+            except:
+                continue
+        
+        return JSONResponse({
+            "success": True,
+            "statistics": {
+                "uptime": uptime,
+                "threats_detected": threats_detected,
+                "alerts_sent": alerts_sent
+            }
+        })
+    except Exception as e:
+        log_error(f"Failed to get statistics: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/files")
+async def get_files(request: Request, type: str = Query("logs", description="Type: logs or storage"), path: str = Query("", description="Subdirectory path")):
+    """Unified file listing for logs and storage directories"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Determine base directory
+        if type == "logs":
+            base_dir = "logs"
+        elif type == "storage":
+            base_dir = "storage"
+        else:
+            return JSONResponse({"error": "Invalid type. Use 'logs' or 'storage'"}, status_code=400)
+        
+        # Build full path
+        if path:
+            full_path = os.path.join(base_dir, path)
+        else:
+            full_path = base_dir
+        
+        # Security check - ensure path is within allowed directories
+        full_path = os.path.abspath(full_path)
+        base_abs = os.path.abspath(base_dir)
+        if not full_path.startswith(base_abs):
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        
+        # Get file list using helper function
+        files = get_file_list(full_path, recursive=False)
+        
+        # Add formatted file sizes
+        for file in files:
+            if file["type"] == "file":
+                file["size_formatted"] = format_file_size(file["size"])
+            else:
+                file["size_formatted"] = f"{file['size']} items"
+        
+        return JSONResponse({"success": True, "files": files, "base_path": base_dir, "current_path": path})
+    except Exception as e:
+        log_error(f"Failed to get files: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/files/download")
+async def download_file(request: Request, type: str = Query(...), path: str = Query(...)):
+    """Download file from logs or storage"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Determine base directory
+        if type == "logs":
+            base_dir = "logs"
+        elif type == "storage":
+            base_dir = "storage"
+        else:
+            return JSONResponse({"error": "Invalid type"}, status_code=400)
+        
+        # Build full path
+        full_path = os.path.join(base_dir, path)
+        
+        # Security check
+        full_path = os.path.abspath(full_path)
+        base_abs = os.path.abspath(base_dir)
+        if not full_path.startswith(base_abs):
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        
+        if not os.path.exists(full_path) or os.path.isdir(full_path):
+            return JSONResponse({"error": "File not found"}, status_code=404)
+        
+        filename = os.path.basename(full_path)
+        return FileResponse(full_path, filename=filename)
+    except Exception as e:
+        log_error(f"Failed to download file: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/files/preview")
+async def preview_file(request: Request, type: str = Query(...), path: str = Query(...)):
+    """Preview file content"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Determine base directory
+        if type == "logs":
+            base_dir = "logs"
+        elif type == "storage":
+            base_dir = "storage"
+        else:
+            return JSONResponse({"error": "Invalid type"}, status_code=400)
+        
+        # Build full path
+        full_path = os.path.join(base_dir, path)
+        
+        # Security check
+        full_path = os.path.abspath(full_path)
+        base_abs = os.path.abspath(base_dir)
+        if not full_path.startswith(base_abs):
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        
+        content, error = read_file_preview(full_path)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        
+        return JSONResponse({"success": True, "content": content, "filename": os.path.basename(full_path)})
+    except Exception as e:
+        log_error(f"Failed to preview file: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/backup/run")
+async def run_backup(request: Request):
+    """Run backup process manually"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["python", "run.py", "--backup"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            return JSONResponse({
+                "success": True, 
+                "message": "Backup completed successfully",
+                "output": result.stdout
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": "Backup failed",
+                "output": result.stderr
+            }, status_code=400)
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"error": "Backup process timed out"}, status_code=408)
+    except Exception as e:
+        log_error(f"Failed to run backup: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/file-content")
+async def get_file_content(request: Request, path: str = Query(..., description="File path")):
+    """Get file content for preview"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        # Validate path is within allowed directories
+        base_dirs = ["logs", "storage"]
+        if not any(path.startswith(base_dir) for base_dir in base_dirs):
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        
+        if not os.path.exists(path):
+            return JSONResponse({"error": "File not found"}, status_code=404)
+        
+        # Read file content (limit to first 30 lines for large files)
+        with open(path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            preview_lines = lines[:30] if len(lines) > 30 else lines
+            content = ''.join(preview_lines)
+            
+        return JSONResponse({
+            "success": True,
+            "content": content,
+            "total_lines": len(lines),
+            "preview_lines": len(preview_lines),
+            "truncated": len(lines) > 30
+        })
+    except Exception as e:
+        log_error(f"Failed to read file: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/live-log")
+async def get_live_log(request: Request):
+    """Get live log content from logs/all.log"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        log_file = "logs/all.log"
+        if not os.path.exists(log_file):
+            return JSONResponse({"success": True, "content": "No log file found"})
+        
+        # Read last 100 lines
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            recent_lines = lines[-100:] if len(lines) > 100 else lines
+            content = ''.join(recent_lines)
+            
+        return JSONResponse({"success": True, "content": content})
+    except Exception as e:
+        log_error(f"Failed to read live log: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/clear-log")
+async def clear_log(request: Request):
+    """Clear the main log file"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        log_file = "logs/all.log"
+        if os.path.exists(log_file):
+            with open(log_file, 'w') as f:
+                f.write("")
+        return JSONResponse({"success": True, "message": "Log cleared"})
+    except Exception as e:
+        log_error(f"Failed to clear log: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/whatsapp/sessions")
@@ -628,7 +1108,7 @@ async def get_process_logs(request: Request):
         
         logs = []
         log_files = glob.glob("logs/*.log")
-        
+        k
         for log_file in log_files[-3:]:  # Last 3 log files
             try:
                 with open(log_file, 'r') as f:
@@ -2051,3 +2531,283 @@ async def get_storage_tree(request: Request):
     except Exception as e:
         log_error(f"Failed to get storage tree: {e}")
         return JSONResponse({"success": False, "error": str(e)})
+
+# ------------- Missing API Endpoints -------------
+
+@app.get("/api/reload-config")
+async def reload_config_api(request: Request):
+    """Reload config.json without restart server"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = load_config()
+        log_success("Configuration reloaded successfully")
+        return JSONResponse({"success": True, "message": "Configuration reloaded", "config": cfg})
+    except Exception as e:
+        log_error(f"Failed to reload config: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/status")
+async def get_system_status(request: Request):
+    """Return uptime, last polling, connected WA sessions, channel status"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = safe_load_cfg()
+        
+        # Calculate uptime
+        uptime_seconds = int(time.perf_counter() - APP_START_TIME)
+        hours = uptime_seconds // 3600
+        minutes = (uptime_seconds % 3600) // 60
+        seconds = uptime_seconds % 60
+        uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Get last polling timestamp
+        last_polling = cfg.get('polling', {}).get('last_success_ts', 'Never')
+        if isinstance(last_polling, (int, float)):
+            last_polling = datetime.fromtimestamp(last_polling).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Check channel status
+        channels = {
+            'telegram': {
+                'enabled': cfg.get('channels', {}).get('telegram', {}).get('enabled', False),
+                'configured': bool(cfg.get('channels', {}).get('telegram', {}).get('bot_token'))
+            },
+            'teams': {
+                'enabled': cfg.get('channels', {}).get('teams', {}).get('enabled', False),
+                'configured': bool(cfg.get('channels', {}).get('teams', {}).get('webhook_url'))
+            },
+            'whatsapp': {
+                'enabled': cfg.get('channels', {}).get('whatsapp', {}).get('enabled', False),
+                'configured': bool(cfg.get('whatsapp_gateway', {}).get('base_url'))
+            }
+        }
+        
+        # Try to get WhatsApp sessions
+        wa_sessions = []
+        try:
+            wb = get_whatsapp_bridge()
+            result = wb.list_sessions()
+            if isinstance(result, dict) and 'sessions' in result:
+                wa_sessions = result['sessions']
+        except:
+            pass
+        
+        return JSONResponse({
+            "success": True,
+            "status": {
+                "uptime": uptime,
+                "uptime_seconds": uptime_seconds,
+                "last_polling": last_polling,
+                "channels": channels,
+                "whatsapp_sessions": len(wa_sessions),
+                "connected_sessions": len([s for s in wa_sessions if s.get('status') == 'connected'])
+            }
+        })
+    except Exception as e:
+        log_error(f"Failed to get system status: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/system/reload")
+async def reload_system(request: Request):
+    """Reload system using pm2 restart"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        import subprocess
+        
+        # Run pm2 restart command
+        cmd = ['pm2', 'restart', 'ecosystem.config.js', '--only', 'sentinelone-web']
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            log_success("System reload initiated via PM2")
+            return JSONResponse({
+                "success": True, 
+                "message": "System reload initiated",
+                "output": result.stdout
+            })
+        else:
+            log_error(f"PM2 restart failed: {result.stderr}")
+            return JSONResponse({
+                "success": False, 
+                "error": f"PM2 restart failed: {result.stderr}",
+                "output": result.stdout
+            })
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"success": False, "error": "Reload command timed out"})
+    except Exception as e:
+        log_error(f"Failed to reload system: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/logs/wa")
+async def get_wa_logs_api(request: Request, session: str = Query(None)):
+    """Get WhatsApp logs for UI display"""
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        logs_data = []
+        base_log_dir = os.path.join("logs", "wa")
+        
+        if not os.path.exists(base_log_dir):
+            return JSONResponse({"success": True, "logs": []})
+        
+        # If specific session requested
+        if session:
+            session_dir = os.path.join(base_log_dir, session)
+            if os.path.exists(session_dir):
+                for file in os.listdir(session_dir):
+                    if file.endswith('.json'):
+                        number = file[:-5]  # Remove .json extension
+                        file_path = os.path.join(session_dir, file)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                file_data = json.load(f)
+                                for log_entry in file_data.get('logs', []):
+                                    logs_data.append({
+                                        'timestamp': log_entry.get('timestamp'),
+                                        'session': session,
+                                        'target': number,
+                                        'message': log_entry.get('message', ''),
+                                        'status': log_entry.get('status', 'unknown')
+                                    })
+                        except Exception as e:
+                            log_error(f"Error reading WA log file {file_path}: {e}")
+        else:
+            # Get all sessions
+            for session_name in os.listdir(base_log_dir):
+                session_dir = os.path.join(base_log_dir, session_name)
+                if os.path.isdir(session_dir):
+                    for file in os.listdir(session_dir):
+                        if file.endswith('.json'):
+                            number = file[:-5]  # Remove .json extension
+                            file_path = os.path.join(session_dir, file)
+                            try:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    file_data = json.load(f)
+                                    for log_entry in file_data.get('logs', []):
+                                        logs_data.append({
+                                            'timestamp': log_entry.get('timestamp'),
+                                            'session': session_name,
+                                            'target': number,
+                                            'message': log_entry.get('message', ''),
+                                            'status': log_entry.get('status', 'unknown')
+                                        })
+                            except Exception as e:
+                                log_error(f"Error reading WA log file {file_path}: {e}")
+        
+        # Sort by timestamp (newest first)
+        logs_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        
+        return JSONResponse({"success": True, "logs": logs_data[:100]})  # Limit to 100 entries
+    except Exception as e:
+        log_error(f"Failed to get WA logs: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/config/validate-pin")
+async def validate_pin(request: Request):
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        data = await request.json()
+        current_pin = data.get('current_pin')
+        new_pin = data.get('new_pin')
+        
+        if not current_pin:
+            return JSONResponse({"error": "Current PIN required"}, status_code=400)
+        
+        cfg = safe_load_cfg()
+        stored_pin = cfg.get('web', {}).get('pin', '1234')
+        
+        if current_pin != stored_pin:
+            return JSONResponse({"error": "Invalid current PIN"}, status_code=400)
+        
+        if new_pin:
+            # Update PIN
+            cfg.setdefault('web', {})['pin'] = new_pin
+            safe_save_cfg(cfg)
+            return JSONResponse({"success": True, "message": "PIN updated successfully"})
+        else:
+            return JSONResponse({"success": True, "message": "PIN validated successfully"})
+            
+    except Exception as e:
+        log_error(f"PIN validation failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/wa/session/{session_name}")
+async def get_wa_session_info(request: Request, session_name: str):
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = safe_load_cfg()
+        gateway_url = cfg.get('whatsapp_gateway', {}).get('base_url', 'http://localhost:5013')
+        
+        import requests
+        response = requests.get(f'{gateway_url}/api/session/{session_name}', timeout=10)
+        
+        if response.status_code == 200:
+            session_data = response.json()
+            return JSONResponse({"success": True, "session": session_data})
+        else:
+            return JSONResponse({"error": f"Session not found: {response.status_code}"}, status_code=404)
+            
+    except Exception as e:
+        log_error(f"Failed to get session info: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/wa/session/{session_name}/disconnect")
+async def disconnect_wa_session(request: Request, session_name: str):
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = safe_load_cfg()
+        gateway_url = cfg.get('whatsapp_gateway', {}).get('base_url', 'http://localhost:5013')
+        
+        import requests
+        response = requests.post(f'{gateway_url}/api/session/{session_name}/disconnect', timeout=10)
+        
+        if response.status_code == 200:
+            return JSONResponse({"success": True, "message": f"Session {session_name} disconnected"})
+        else:
+            return JSONResponse({"error": f"Failed to disconnect session: {response.status_code}"}, status_code=400)
+            
+    except Exception as e:
+        log_error(f"Failed to disconnect session: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/wa/groups")
+async def get_wa_groups(request: Request, session: str = Query("default")):
+    r = require_auth_redirect()
+    if r:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    try:
+        cfg = safe_load_cfg()
+        gateway_url = cfg.get('whatsapp_gateway', {}).get('base_url', 'http://localhost:5013')
+        
+        import requests
+        response = requests.get(f'{gateway_url}/api/groups?session={session}', timeout=10)
+        
+        if response.status_code == 200:
+            groups_data = response.json()
+            return JSONResponse({"success": True, "groups": groups_data.get('groups', [])})
+        else:
+            return JSONResponse({"error": f"Failed to get groups: {response.status_code}"}, status_code=400)
+            
+    except Exception as e:
+        log_error(f"Failed to get groups: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

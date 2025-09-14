@@ -1,0 +1,84 @@
+{
+  "timestamp": "2025-09-15T02:03:41.044376",
+  "success": false,
+  "results": [
+    {
+      "test": "Web Server Running",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:36.224230"
+    },
+    {
+      "test": "Login Functionality",
+      "success": true,
+      "message": "Status: 303",
+      "timestamp": "2025-09-15T02:03:36.308669"
+    },
+    {
+      "test": "Dashboard Access",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:36.327595"
+    },
+    {
+      "test": "Config API",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:36.347678"
+    },
+    {
+      "test": "Statistics API",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:38.114094"
+    },
+    {
+      "test": "Files API",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:38.145357"
+    },
+    {
+      "test": "Processes API",
+      "success": false,
+      "message": "Status: 500",
+      "timestamp": "2025-09-15T02:03:38.171556"
+    },
+    {
+      "test": "Config Save/Load",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:38.202025"
+    },
+    {
+      "test": "Notification Test Endpoint",
+      "success": true,
+      "message": "Status: 400",
+      "timestamp": "2025-09-15T02:03:38.208925"
+    },
+    {
+      "test": "WhatsApp Sessions",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:40.083875"
+    },
+    {
+      "test": "WhatsApp Logs",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:40.981553"
+    },
+    {
+      "test": "File Listing",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:40.985894"
+    },
+    {
+      "test": "Live Log Access",
+      "success": true,
+      "message": "Status: 200",
+      "timestamp": "2025-09-15T02:03:41.042690"
+    }
+  ]
+}

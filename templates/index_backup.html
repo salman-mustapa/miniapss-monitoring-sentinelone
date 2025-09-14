@@ -1,11 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
   <title>SentinelOne Monitor - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
   <style>
     :root {
       --bg-primary: #0a0e0f;
@@ -275,11 +274,10 @@
         <div class="col-md-6">
           <div class="hacker-card">
             <h5><i class="fas fa-chart-line"></i> STATISTICS</h5>
-            <div class="mt-3">
-              <div class="mb-2"><strong>THREATS DETECTED:</strong> <span id="threats-count">0</span></div>
-              <div class="mb-2"><strong>ALERTS SENT:</strong> <span id="alerts-count">0</span></div>
-              <div class="mb-2"><strong>UPTIME:</strong> <span id="uptime">00:00:00</span></div>
-            </div>
+            <div class="mb-2"><strong>THREATS DETECTED:</strong> <span id="threats-count">0</span></div>
+            <div class="mb-2"><strong>ALERTS SENT:</strong> <span id="alerts-count">0</span></div>
+            <div class="mb-2"><strong>UPTIME:</strong> <span id="uptime">00:00:00</span></div>
+            <div class="text-muted small">Auto-refresh every 30s</div>
           </div>
         </div>
       </div>
@@ -290,16 +288,15 @@
           <div class="hacker-card">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h5><i class="fas fa-file-alt"></i> SYSTEM LOGS</h5>
-              <button class="btn btn-hacker btn-sm" onclick="toggleSection('logs-content')">
-                <i class="fas fa-chevron-down" id="logs-toggle"></i> EXPAND
+              <button class="btn btn-hacker btn-sm" onclick="toggleSection('logs')">
+                <i class="fas fa-expand"></i> EXPAND
               </button>
             </div>
             <div id="logs-content" class="collapse">
-              <div class="mb-3">
-                <input type="text" class="form-control" id="logs-search" placeholder="Search logs...">
-              </div>
-              <div id="logs-tree" class="file-tree">
-                <!-- Logs tree will be loaded here -->
+              <div id="logs-file-list" class="mb-3">
+                <div class="text-center">
+                  <i class="fas fa-spinner fa-spin"></i> Loading files...
+                </div>
               </div>
             </div>
           </div>
@@ -318,8 +315,10 @@
               <div class="mb-3">
                 <input type="text" class="form-control" id="backup-search" placeholder="Search backup files...">
               </div>
-              <div id="backup-tree" class="file-tree">
-                <!-- Backup files tree will be loaded here -->
+              <div id="backup-file-list" class="mb-3">
+                <div class="text-center">
+                  <i class="fas fa-spinner fa-spin"></i> Loading files...
+                </div>
               </div>
             </div>
           </div>
@@ -331,11 +330,11 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h5><i class="fas fa-terminal"></i> PROCESS OUTPUT</h5>
           <div>
-            <button class="btn btn-hacker btn-sm" onclick="clearTerminal()">
+            <button class="btn btn-hacker btn-sm" onclick="clearLiveLog()">
               <i class="fas fa-trash"></i> CLEAR
             </button>
             <button class="btn btn-hacker btn-sm" onclick="toggleAutoScroll()">
-              <i class="fas fa-arrow-down"></i> AUTO-SCROLL: <span id="autoScrollStatus">ON</span>
+              <i class="fas fa-arrow-down"></i> AUTO-SCROLL: <span id="auto-scroll-status">ON</span>
             </button>
           </div>
         </div>
@@ -358,7 +357,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">API TOKEN</label>
-              <input type="password" class="form-control" id="sentinel-token" placeholder="Your API Token">
+              <input type="password" class="form-control" id="sentinel-token" placeholder="Your API Token" autocomplete="new-password">
             </div>
           </div>
           <div class="mt-3 d-flex gap-2">
@@ -394,7 +393,7 @@
             <div class="row g-3">
               <div class="col-md-4">
                 <label class="form-label">BOT TOKEN</label>
-                <input type="password" class="form-control telegram-token" placeholder="Bot Token">
+                <input type="password" class="form-control telegram-token" placeholder="Bot Token" autocomplete="new-password">
               </div>
               <div class="col-md-3">
                 <label class="form-label">CHAT ID</label>
@@ -656,116 +655,1143 @@
 
   <script>
     let autoScrollEnabled = true;
+    let statisticsInterval;
+    let liveLogInterval;
+
+    // Initialize dashboard when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      loadDashboardData();
+      loadConfigurationData();
+      startStatisticsRefresh();
+      startLiveLogRefresh();
+    });
 
     // Terminal functions
+    function addToTerminal(terminalId, message, type = 'info') {
+      const terminal = document.getElementById(terminalId);
+      if (!terminal) return;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      const typeClass = type === 'success' ? 'text-success' : 
+                       type === 'error' ? 'text-danger' : 
+                       type === 'warning' ? 'text-warning' : 'text-info';
+      
+      const line = document.createElement('div');
+      line.className = `terminal-line ${typeClass}`;
+      line.textContent = `[${timestamp}] ${message}`;
+      
+      terminal.appendChild(line);
+      terminal.scrollTop = terminal.scrollHeight;
+      
+      // Keep only last 100 lines
+      while (terminal.children.length > 100) {
+        terminal.removeChild(terminal.firstChild);
+      }
+    }
+
     function appendToTerminal(message) {
       addToTerminal('whatsapp-output', message, 'info');
     }
 
-    async function generateQR() {
-      const container = document.getElementById('qr-container');
-      container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> GENERATING...</div>';
-    }
-
-    async function refreshSessions() {
+    // Dashboard functions
+    async function loadDashboardData() {
       try {
-        // Get WhatsApp gateway URL from config
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
+        // Load statistics
+        const statsData = await fetchJson('/api/statistics');
         
-        let gatewayUrl = 'http://localhost:5013'; // default
-        if (configData.success && configData.config?.whatsapp_gateway?.base_url) {
-          gatewayUrl = configData.config.whatsapp_gateway.base_url;
+        if (statsData.success) {
+          // Set app start time for realtime uptime
+          if (!appStartTime) {
+            const stats = statsData.statistics;
+            const uptimeParts = stats.uptime.split(':');
+            const uptimeSeconds = parseInt(uptimeParts[0]) * 3600 + parseInt(uptimeParts[1]) * 60 + parseInt(uptimeParts[2]);
+            appStartTime = Date.now() - (uptimeSeconds * 1000);
+            startRealtimeUptime();
+          }
+          
+          document.getElementById('threats-detected').textContent = statsData.statistics.threats_detected;
+          document.getElementById('alerts-sent').textContent = statsData.statistics.alerts_sent;
         }
         
-        const response = await fetch(`${gatewayUrl}/api/sessions`);
-        const data = await response.json();
+        // Load system logs
+        loadSystemLogs();
         
-        const container = document.getElementById('sessions-list');
-        if (data.success && data.sessions) {
-          container.innerHTML = data.sessions.map(session => `
-            <div class="session-item">
-              <span class="session-name">${session.name}</span>
-              <span class="session-status ${session.connected ? 'connected' : 'disconnected'}">
-                ${session.connected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-          `).join('');
-        } else {
-          container.innerHTML = '<div class="text-danger">No sessions found</div>';
-        }
+        // Load backup files
+        loadBackupFiles();
+        
+        // Load process output
+        loadProcessOutput();
       } catch (error) {
-        document.getElementById('sessions-list').innerHTML = '<div class="text-danger">Connection error: ' + error.message + '</div>';
+        console.error('Failed to load dashboard data:', error);
       }
     }
-
-    async function refreshSessions() {
-      const container = document.getElementById('sessions-container');
-      container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> LOADING...</div>';
+    
+    function startRealtimeUptime() {
+      if (uptimeInterval) clearInterval(uptimeInterval);
       
-      try {
-        // Get WhatsApp gateway URL from config
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
-        
-        let gatewayUrl = 'http://localhost:5013'; // default
-        if (configData.success && configData.config?.whatsapp_gateway?.base_url) {
-          gatewayUrl = configData.config.whatsapp_gateway.base_url;
+      uptimeInterval = setInterval(() => {
+        if (appStartTime) {
+          const uptimeMs = Date.now() - appStartTime;
+          const uptimeSeconds = Math.floor(uptimeMs / 1000);
+          const hours = Math.floor(uptimeSeconds / 3600);
+          const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+          const seconds = uptimeSeconds % 60;
+          
+          document.getElementById('uptime').textContent = 
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
+      }, 1000);
+    }
+
+    async function loadSystemLogs() {
+      try {
+        const data = await fetchJson('/api/files?type=logs');
         
-        const response = await fetch(`${gatewayUrl}/api/sessions`);
-        const data = await response.json();
-        
-        if (data.success && data.sessions) {
-          let html = '<div class="row g-2">';
-          data.sessions.forEach(session => {
-            html += `
-              <div class="col-md-6">
-                <div class="hacker-card">
-                  <h6>${session.name}</h6>
-                  <p class="mb-2">Status: <span class="badge ${session.connected ? 'bg-success' : 'bg-danger'}">${session.connected ? 'CONNECTED' : 'DISCONNECTED'}</span></p>
-                  ${!session.connected ? `<button class="btn btn-hacker btn-sm" onclick="connectSession('${session.name}')">CONNECT</button>` : ''}
-                </div>
-              </div>
-            `;
+        const container = document.getElementById('logs-file-list');
+        if (data.success && data.files) {
+          let html = '';
+          data.files.forEach(file => {
+            if (file.type === 'file') {
+              const fileIcon = getFileIcon(file.name);
+              html += `
+                <tr>
+                  <td><i class="${fileIcon}"></i> ${file.name}</td>
+                  <td>${formatFileSize(file.size)}</td>
+                  <td>${new Date(file.modified).toLocaleString()}</td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="previewFile('${file.full_path}', '${file.name}')" title="Preview">
+                      <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="downloadFile('${file.full_path}', '${file.name}')" title="Download">
+                      <i class="fas fa-download"></i>
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }
           });
-          html += '</div>';
-          container.innerHTML = html;
-          appendToTerminal('[SUCCESS] Sessions refreshed');
-        } else {
-          container.innerHTML = '<div class="text-danger">Failed to load sessions</div>';
-          appendToTerminal('[ERROR] Session refresh failed: ' + (data.error || 'Unknown error'));
+          container.innerHTML = html || '<tr><td colspan="4" class="text-muted">No log files found</td></tr>';
         }
       } catch (error) {
-        container.innerHTML = '<div class="text-danger">Connection error: ' + error.message + '</div>';
-        appendToTerminal('[ERROR] Session request failed: ' + error.message);
+        console.error('Failed to load system logs:', error);
+        document.getElementById('logs-file-list').innerHTML = '<tr><td colspan="4" class="text-danger">Failed to load logs</td></tr>';
       }
     }
 
-    async function connectSession(sessionName) {
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      switch (ext) {
+        case 'log': return 'fas fa-file-alt text-warning';
+        case 'json': return 'fas fa-file-code text-info';
+        case 'txt': return 'fas fa-file-alt text-light';
+        case 'py': return 'fab fa-python text-success';
+        default: return 'fas fa-file text-muted';
+      }
+    }
+
+    async function previewFile(filePath, fileName) {
       try {
-        // Get WhatsApp gateway URL from config
-        const configResponse = await fetch('/api/config');
-        const configData = await configResponse.json();
+        const data = await fetchJson(`/api/file/preview?path=${encodeURIComponent(filePath)}`);
         
-        let gatewayUrl = 'http://localhost:5013'; // default
-        if (configData.success && configData.config?.whatsapp_gateway?.base_url) {
-          gatewayUrl = configData.config.whatsapp_gateway.base_url;
+        if (data.success) {
+          showFileModal(fileName, data.content, 'preview');
+        } else {
+          showToast(`Cannot preview file: ${data.error}`, 'error');
         }
+      } catch (error) {
+        showToast(`Preview error: ${error.message}`, 'error');
+      }
+    }
+
+    function downloadFile(filePath, fileName) {
+      const downloadUrl = `/api/file/download?path=${encodeURIComponent(filePath)}`;
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`Downloading ${fileName}`, 'success');
+    }
+
+    function showFileModal(title, content, type = 'preview') {
+      const modal = document.getElementById('fileModal') || createFileModal();
+      const modalTitle = modal.querySelector('.modal-title');
+      const modalBody = modal.querySelector('.modal-body');
+      
+      modalTitle.textContent = title;
+      modalBody.innerHTML = `<pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;">${escapeHtml(content)}</pre>`;
+      
+      const bsModal = new bootstrap.Modal(modal);
+      bsModal.show();
+    }
+
+    function createFileModal() {
+      const modal = document.createElement('div');
+      modal.id = 'fileModal';
+      modal.className = 'modal fade';
+      modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+              <h5 class="modal-title">File Preview</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body"></div>
+            <div class="modal-footer border-secondary">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      return modal;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function loadBackupFiles() {
+      try {
+        const data = await fetchJson('/api/files?type=storage');
         
-        const response = await fetch(`${gatewayUrl}/api/qr?session=${sessionName}`);
+        const container = document.getElementById('backup-file-list');
+        if (data.success && data.files) {
+          const html = buildFileTree(data.files);
+          container.innerHTML = html || '<div class="text-muted">No backup files found</div>';
+          
+          // Add backup now button
+          const backupButton = `
+            <div class="mt-3">
+              <button class="btn btn-outline-success" onclick="backupNow()">
+                <i class="fas fa-save"></i> Backup Now
+              </button>
+            </div>
+          `;
+          container.innerHTML += backupButton;
+        }
+      } catch (error) {
+        console.error('Failed to load backup files:', error);
+        document.getElementById('backup-file-list').innerHTML = '<div class="text-danger">Failed to load backup files</div>';
+      }
+    }
+
+    function buildFileTree(files) {
+      let html = '';
+      const directories = files.filter(f => f.type === 'directory');
+      const filesList = files.filter(f => f.type === 'file');
+      
+      // Show directories first
+      directories.forEach(dir => {
+        html += `
+          <div class="folder-item mb-2">
+            <div class="d-flex align-items-center p-2 bg-dark border rounded cursor-pointer" onclick="toggleFolder('${dir.path}')">
+              <i class="fas fa-folder text-warning me-2"></i>
+              <span class="flex-grow-1">${dir.name}</span>
+              <small class="text-muted">${new Date(dir.modified).toLocaleDateString()}</small>
+              <i class="fas fa-chevron-right ms-2" id="chevron-${dir.path.replace(/[^a-zA-Z0-9]/g, '_')}"></i>
+            </div>
+            <div class="folder-content ms-3 mt-2" id="folder-${dir.path.replace(/[^a-zA-Z0-9]/g, '_')}" style="display: none;">
+              <div class="text-muted">Click to expand...</div>
+            </div>
+          </div>
+        `;
+      });
+      
+      // Show files
+      if (filesList.length > 0) {
+        html += '<div class="mt-3"><strong>Files:</strong></div>';
+        filesList.forEach(file => {
+          const fileIcon = getFileIcon(file.name);
+          html += `
+            <div class="file-item d-flex align-items-center p-2 border-bottom">
+              <i class="${fileIcon} me-2"></i>
+              <span class="flex-grow-1">${file.name}</span>
+              <small class="text-muted me-2">${formatFileSize(file.size)}</small>
+              <small class="text-muted me-2">${new Date(file.modified).toLocaleString()}</small>
+              <div>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="previewFile('${file.full_path}', '${file.name}')" title="Preview">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-success" onclick="downloadFile('${file.full_path}', '${file.name}')" title="Download">
+                  <i class="fas fa-download"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        });
+      }
+      
+      return html;
+    }
+
+    async function toggleFolder(folderPath) {
+      const folderId = folderPath.replace(/[^a-zA-Z0-9]/g, '_');
+      const folderContent = document.getElementById(`folder-${folderId}`);
+      const chevron = document.getElementById(`chevron-${folderId}`);
+      
+      if (folderContent.style.display === 'none') {
+        // Expand folder
+        folderContent.style.display = 'block';
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+        
+        // Load folder contents
+        try {
+          const data = await fetchJson(`/api/files?type=storage&path=${encodeURIComponent(folderPath)}`);
+          if (data.success && data.files) {
+            const html = buildFileTree(data.files);
+            folderContent.innerHTML = html || '<div class="text-muted">Empty folder</div>';
+          }
+        } catch (error) {
+          folderContent.innerHTML = '<div class="text-danger">Failed to load folder contents</div>';
+        }
+      } else {
+        // Collapse folder
+        folderContent.style.display = 'none';
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+      }
+    }
+
+    async function backupNow() {
+      try {
+        showToast('Starting backup...', 'info');
+        const data = await postJson('/api/backup/now', {});
+        
+        if (data.success) {
+          showToast('Backup completed successfully', 'success');
+          // Refresh backup files list
+          loadBackupFiles();
+        } else {
+          showToast(`Backup failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`Backup error: ${error.message}`, 'error');
+      }
+    }
+
+    async function loadProcessOutput() {
+      try {
+        const response = await fetch('/api/live-log');
         const data = await response.json();
         
         if (data.success) {
-          appendToTerminal('[SUCCESS] Session connected: ' + sessionName);
-          refreshSessions();
-        } else {
-          appendToTerminal('[ERROR] Session connection failed: ' + data.error);
+          document.getElementById('terminal-output').textContent = data.content || 'No log data available';
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Session connection error: ' + error.message);
+        console.error('Failed to load process output:', error);
       }
     }
+
+    function startStatisticsRefresh() {
+      statisticsInterval = setInterval(loadStatistics, 30000); // Refresh every 30 seconds
+    }
+
+    function startLiveLogRefresh() {
+      liveLogInterval = setInterval(loadProcessOutput, 5000); // Refresh every 5 seconds
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function clearLiveLog() {
+      fetch('/api/clear-log', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            document.getElementById('terminal-output').textContent = '';
+            addToTerminal('terminal-output', 'Log cleared', 'success');
+          }
+        })
+        .catch(error => console.error('Failed to clear log:', error));
+    }
+
+    function toggleAutoScroll() {
+      autoScrollEnabled = !autoScrollEnabled;
+      document.getElementById('auto-scroll-status').textContent = autoScrollEnabled ? 'ON' : 'OFF';
+    }
+
+    // Configuration loading functions
+    async function loadConfigurationData() {
+      try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        if (data.success && data.config) {
+          loadSentinelOneConfig(data.config);
+          loadNotificationConfigs(data.config);
+          loadWhatsAppConfig(data.config);
+          loadSystemConfig(data.config);
+        }
+      } catch (error) {
+        console.error('Failed to load configuration:', error);
+      }
+    }
+
+    function loadSentinelOneConfig(config) {
+      const sentinelConfig = config.sentinelone || {};
+      
+      const urlField = document.getElementById('sentinel-url');
+      const tokenField = document.getElementById('sentinel-token');
+      
+      if (urlField && sentinelConfig.base_url) {
+        urlField.value = sentinelConfig.base_url;
+      }
+      if (tokenField && sentinelConfig.api_token) {
+        tokenField.value = sentinelConfig.api_token;
+      }
+    }
+
+    function loadSystemConfig(config) {
+      const webConfig = config.web || {};
+      
+      const baseUrlField = document.getElementById('config-base-url');
+      const portField = document.getElementById('config-port');
+      
+      if (baseUrlField && webConfig.base_url) {
+        baseUrlField.value = webConfig.base_url;
+      }
+      if (portField && webConfig.port) {
+        portField.value = webConfig.port;
+      }
+    }
+
+    function loadWhatsAppConfig(config) {
+      const waConfig = config.channels?.whatsapp || {};
+      const gatewayConfig = config.whatsapp_gateway || {};
+      
+      // Load WhatsApp tab config
+      const baseUrlField = document.getElementById('wa-base-url');
+      const sessionField = document.getElementById('wa-session');
+      const enabledField = document.getElementById('wa-enabled');
+      
+      if (baseUrlField && gatewayConfig.base_url) {
+        baseUrlField.value = gatewayConfig.base_url;
+      }
+      if (sessionField && waConfig.session_name) {
+        sessionField.value = waConfig.session_name;
+      }
+      if (enabledField) {
+        enabledField.checked = waConfig.enabled || false;
+      }
+    }
+
+    // SentinelOne functions
+    async function testSentinelConnection() {
+      const urlField = document.getElementById('sentinel-url');
+      const tokenField = document.getElementById('sentinel-token');
+      
+      if (!urlField.value || !tokenField.value) {
+        addToTerminal('sentinelone-output', 'Please enter both URL and API token', 'error');
+        return;
+      }
+      
+      addToTerminal('sentinelone-output', 'Testing SentinelOne connection...', 'info');
+      
+      try {
+        const response = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: 'sentinelone',
+            base_url: urlField.value,
+            api_token: tokenField.value
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('sentinelone-output', 'Connection successful!', 'success');
+          if (data.response) {
+            addToTerminal('sentinelone-output', `Status: ${data.status_code}`, 'info');
+            addToTerminal('sentinelone-output', `Response: ${JSON.stringify(data.response, null, 2)}`, 'info');
+          }
+        } else {
+          addToTerminal('sentinelone-output', `Connection failed: ${data.error}`, 'error');
+          if (data.response) {
+            addToTerminal('sentinelone-output', `Status: ${data.status_code}`, 'error');
+            addToTerminal('sentinelone-output', `Response: ${JSON.stringify(data.response, null, 2)}`, 'error');
+          }
+        }
+      } catch (error) {
+        addToTerminal('sentinelone-output', `Connection error: ${error.message}`, 'error');
+      }
+    }
+
+    // Handle SentinelOne form submission
+    document.getElementById('sentinelone-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const urlField = document.getElementById('sentinel-url');
+      const tokenField = document.getElementById('sentinel-token');
+      
+      if (!urlField.value || !tokenField.value) {
+        addToTerminal('sentinelone-output', 'Please fill in all fields', 'error');
+        return;
+      }
+      
+      addToTerminal('sentinelone-output', 'Saving SentinelOne configuration...', 'info');
+      
+      try {
+        const response = await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sentinelone: {
+              base_url: urlField.value,
+              api_token: tokenField.value
+            }
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('sentinelone-output', 'Configuration saved successfully!', 'success');
+          showToast('SentinelOne configuration saved', 'success');
+        } else {
+          addToTerminal('sentinelone-output', `Save failed: ${data.error}`, 'error');
+          showToast('Failed to save configuration', 'error');
+        }
+      } catch (error) {
+        addToTerminal('sentinelone-output', `Save error: ${error.message}`, 'error');
+        showToast('Failed to save configuration', 'error');
+      }
+    });
+
+    // WhatsApp functions
+    async function testWhatsAppConnection() {
+      const baseUrlField = document.getElementById('wa-base-url');
+      const sessionField = document.getElementById('wa-session');
+      
+      if (!baseUrlField.value) {
+        addToTerminal('whatsapp-output', 'Please enter gateway URL', 'error');
+        return;
+      }
+      
+      addToTerminal('whatsapp-output', 'Testing WhatsApp gateway connection...', 'info');
+      
+      try {
+        const response = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: 'whatsapp',
+            gateway_url: baseUrlField.value,
+            session_name: sessionField.value || 'default'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('whatsapp-output', 'Gateway connection successful!', 'success');
+        } else {
+          addToTerminal('whatsapp-output', `Connection failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        addToTerminal('whatsapp-output', `Connection error: ${error.message}`, 'error');
+      }
+    }
+
+    // Handle WhatsApp config form submission
+    document.getElementById('wa-config-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const baseUrlField = document.getElementById('wa-base-url');
+      const sessionField = document.getElementById('wa-session');
+      const enabledField = document.getElementById('wa-enabled');
+      
+      addToTerminal('whatsapp-output', 'Saving WhatsApp configuration...', 'info');
+      
+      try {
+        const response = await fetch('/api/wa/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base_url: baseUrlField.value,
+            session_name: sessionField.value || 'default'
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('whatsapp-output', 'Configuration saved successfully!', 'success');
+          showToast('WhatsApp configuration saved', 'success');
+          
+          // Also update the channels config
+          await fetch('/api/config/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channels: {
+                whatsapp: {
+                  enabled: enabledField.checked,
+                  session_name: sessionField.value || 'default'
+                }
+              },
+              whatsapp_gateway: {
+                base_url: baseUrlField.value
+              }
+            })
+          });
+        } else {
+          addToTerminal('whatsapp-output', `Save failed: ${data.error}`, 'error');
+          showToast('Failed to save configuration', 'error');
+        }
+      } catch (error) {
+        addToTerminal('whatsapp-output', `Save error: ${error.message}`, 'error');
+        showToast('Failed to save configuration', 'error');
+      }
+    });
+
+    async function generateQR() {
+      const container = document.getElementById('qr-container');
+      const sessionField = document.getElementById('wa-session');
+      const sessionName = sessionField.value || 'default';
+      
+      container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> GENERATING QR...</div>';
+      
+      try {
+        const response = await fetch(`/api/wa/qr?session=${sessionName}`);
+        const data = await response.json();
+        
+        if (data.success && data.qr) {
+          container.innerHTML = `
+            <div class="text-center">
+              <img src="data:image/png;base64,${data.qr}" alt="QR Code" class="img-fluid" style="max-width: 300px;">
+              <p class="mt-2 text-info">Scan with WhatsApp to connect session: ${sessionName}</p>
+            </div>
+          `;
+          addToTerminal('whatsapp-output', `QR code generated for session: ${sessionName}`, 'success');
+        } else if (data.success && !data.qr) {
+          container.innerHTML = '<div class="text-center text-success">Session already connected!</div>';
+          addToTerminal('whatsapp-output', `Session ${sessionName} is already connected`, 'info');
+        } else {
+          container.innerHTML = '<div class="text-center text-danger">Failed to generate QR code</div>';
+          addToTerminal('whatsapp-output', `QR generation failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        container.innerHTML = '<div class="text-center text-danger">Connection error</div>';
+        addToTerminal('whatsapp-output', `QR generation error: ${error.message}`, 'error');
+      }
+    }
+
+    async function refreshSessions() {
+      try {
+        const response = await fetch('/api/whatsapp/sessions');
+        const data = await response.json();
+        
+        const sessionsList = document.getElementById('sessions-list');
+        if (data.success && data.sessions) {
+          sessionsList.innerHTML = data.sessions.map(session => `
+            <div class="session-item p-2 mb-2 bg-dark border rounded">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>${session.name}</strong>
+                  <span class="badge ${session.connected ? 'bg-success' : 'bg-danger'} ms-2">
+                    ${session.connected ? 'Connected' : 'Disconnected'}
+                  </span>
+                </div>
+                <div>
+                  <button class="btn btn-sm btn-outline-info me-1" onclick="getSessionInfo('${session.name}')">
+                    <i class="fas fa-info"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="disconnectSession('${session.name}')">
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          sessionsList.innerHTML = '<div class="text-muted">No sessions found</div>';
+        }
+      } catch (error) {
+        console.error('Failed to refresh sessions:', error);
+        document.getElementById('sessions-list').innerHTML = '<div class="text-danger">Failed to load sessions</div>';
+      }
+    }
+
+    async function getSessionInfo(sessionName) {
+      try {
+        const response = await fetch(`/api/wa/session/${sessionName}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('whatsapp-output', `Session ${sessionName} info:`, 'info');
+          addToTerminal('whatsapp-output', JSON.stringify(data.session, null, 2), 'info');
+        } else {
+          addToTerminal('whatsapp-output', `Failed to get session info: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        addToTerminal('whatsapp-output', `Session info error: ${error.message}`, 'error');
+      }
+    }
+
+    async function disconnectSession(sessionName) {
+      if (!confirm(`Disconnect session ${sessionName}?`)) return;
+      
+      try {
+        const response = await fetch(`/api/wa/session/${sessionName}/disconnect`, {
+          method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          addToTerminal('whatsapp-output', `Session ${sessionName} disconnected`, 'success');
+          refreshSessions();
+        } else {
+          addToTerminal('whatsapp-output', `Failed to disconnect: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        addToTerminal('whatsapp-output', `Disconnect error: ${error.message}`, 'error');
+      }
+    }
+
+    async function fetchGroups() {
+      const sessionField = document.getElementById('wa-session');
+      const sessionName = sessionField.value || 'default';
+      
+      addToTerminal('whatsapp-output', `Fetching groups for session: ${sessionName}...`, 'info');
+      
+      try {
+        const response = await fetch(`/api/wa/groups?session=${sessionName}`);
+        const data = await response.json();
+        
+        const groupsList = document.getElementById('groups-list');
+        if (data.success && data.groups) {
+          groupsList.innerHTML = data.groups.map(group => `
+            <div class="group-item p-2 mb-2 bg-dark border rounded">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>${group.name}</strong>
+                  <br><small class="text-muted">${group.id}</small>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" onclick="selectGroup('${group.id}', '${group.name}')">
+                  Select
+                </button>
+              </div>
+            </div>
+          `).join('');
+          addToTerminal('whatsapp-output', `Found ${data.groups.length} groups`, 'success');
+        } else {
+          groupsList.innerHTML = '<div class="text-muted">No groups found</div>';
+          addToTerminal('whatsapp-output', data.error || 'No groups found', 'warning');
+        }
+      } catch (error) {
+        addToTerminal('whatsapp-output', `Groups fetch error: ${error.message}`, 'error');
+      }
+    }
+
+    function selectGroup(groupId, groupName) {
+      document.getElementById('selected-group').innerHTML = `
+        <div class="alert alert-info">
+          Selected: <strong>${groupName}</strong><br>
+          <small>ID: ${groupId}</small>
+        </div>
+      `;
+      addToTerminal('whatsapp-output', `Selected group: ${groupName}`, 'success');
+    }
+
+    async function loadWhatsAppLogs() {
+      try {
+        const response = await fetch('/api/logs/wa');
+        const data = await response.json();
+        
+        const logsContainer = document.getElementById('wa-logs');
+        if (data.success && data.logs) {
+          logsContainer.innerHTML = data.logs.map(log => `
+            <div class="log-entry p-2 mb-1 bg-dark border-start border-info">
+              <small class="text-muted">${log.timestamp}</small>
+              <div class="text-${log.level === 'ERROR' ? 'danger' : log.level === 'WARNING' ? 'warning' : 'info'}">
+                ${log.message}
+              </div>
+            </div>
+          `).join('');
+        } else {
+          logsContainer.innerHTML = '<div class="text-muted">No logs available</div>';
+        }
+      } catch (error) {
+        console.error('Failed to load WhatsApp logs:', error);
+      }
+    }
+
+    // Notification system functions
+    function loadNotificationConfigs(config) {
+      const channels = config.channels || {};
+      
+      // Load Telegram configs
+      const telegramConfigs = channels.telegram || [];
+      loadChannelConfigs('telegram', telegramConfigs);
+      
+      // Load Teams configs
+      const teamsConfigs = channels.teams || [];
+      loadChannelConfigs('teams', teamsConfigs);
+      
+      // Load WhatsApp configs
+      const whatsappConfigs = channels.whatsapp || [];
+      loadChannelConfigs('whatsapp', whatsappConfigs);
+    }
+
+    function loadChannelConfigs(channel, configs) {
+      const container = document.getElementById(`${channel}-configs`);
+      if (!container) return;
+      
+      container.innerHTML = '';
+      
+      if (Array.isArray(configs)) {
+        configs.forEach((config, index) => {
+          addChannelConfig(channel, config, index);
+        });
+      } else if (configs && typeof configs === 'object') {
+        addChannelConfig(channel, configs, 0);
+      }
+      
+      if (container.children.length === 0) {
+        addChannelConfig(channel, {}, 0);
+      }
+    }
+
+    function addChannelConfig(channel, config = {}, index = 0) {
+      const container = document.getElementById(`${channel}-configs`);
+      if (!container) return;
+      
+      const configDiv = document.createElement('div');
+      configDiv.className = 'config-item mb-3 p-3 border rounded bg-dark';
+      configDiv.dataset.index = index;
+      
+      let fieldsHtml = '';
+      
+      if (channel === 'telegram') {
+        fieldsHtml = `
+          <div class="row">
+            <div class="col-md-6">
+              <label class="form-label">Bot Token</label>
+              <input type="password" class="form-control bg-dark text-light border-secondary" 
+                     value="${config.bot_token || ''}" data-field="bot_token" autocomplete="new-password">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Chat ID</label>
+              <input type="text" class="form-control bg-dark text-light border-secondary" 
+                     value="${config.chat_id || ''}" data-field="chat_id">
+            </div>
+          </div>
+        `;
+      } else if (channel === 'teams') {
+        fieldsHtml = `
+          <div class="row">
+            <div class="col-12">
+              <label class="form-label">Webhook URL</label>
+              <input type="url" class="form-control bg-dark text-light border-secondary" 
+                     value="${config.webhook_url || ''}" data-field="webhook_url" autocomplete="new-password">
+            </div>
+          </div>
+        `;
+      } else if (channel === 'whatsapp') {
+        fieldsHtml = `
+          <div class="row">
+            <div class="col-md-6">
+              <label class="form-label">Session Name</label>
+              <input type="text" class="form-control bg-dark text-light border-secondary" 
+                     value="${config.session_name || 'default'}" data-field="session_name">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Group ID</label>
+              <input type="text" class="form-control bg-dark text-light border-secondary" 
+                     value="${config.group_id || ''}" data-field="group_id">
+            </div>
+          </div>
+        `;
+      }
+      
+      configDiv.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">${channel.charAt(0).toUpperCase() + channel.slice(1)} Config #${index + 1}</h6>
+          <div>
+            <button type="button" class="btn btn-sm btn-outline-success me-1" onclick="testChannelConfig('${channel}', ${index})">
+              <i class="fas fa-check"></i> Test
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeChannelConfig('${channel}', ${index})">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+        ${fieldsHtml}
+        <div class="row mt-2">
+          <div class="col-md-6">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" ${config.enabled ? 'checked' : ''} 
+                     data-field="enabled" id="${channel}-enabled-${index}">
+              <label class="form-check-label" for="${channel}-enabled-${index}">
+                Enabled
+              </label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" ${config.use_for_notifications ? 'checked' : ''} 
+                     data-field="use_for_notifications" id="${channel}-notify-${index}">
+              <label class="form-check-label" for="${channel}-notify-${index}">
+                Use for Notifications
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      container.appendChild(configDiv);
+    }
+
+    function addNewChannelConfig(channel) {
+      const container = document.getElementById(`${channel}-configs`);
+      const index = container.children.length;
+      addChannelConfig(channel, {}, index);
+    }
+
+    function removeChannelConfig(channel, index) {
+      const container = document.getElementById(`${channel}-configs`);
+      const configDiv = container.querySelector(`[data-index="${index}"]`);
+      if (configDiv) {
+        configDiv.remove();
+        // Reindex remaining configs
+        Array.from(container.children).forEach((child, newIndex) => {
+          child.dataset.index = newIndex;
+          child.querySelector('h6').textContent = `${channel.charAt(0).toUpperCase() + channel.slice(1)} Config #${newIndex + 1}`;
+        });
+      }
+    }
+
+    async function testChannelConfig(channel, index) {
+      const container = document.getElementById(`${channel}-configs`);
+      const configDiv = container.querySelector(`[data-index="${index}"]`);
+      
+      if (!configDiv) return;
+      
+      const config = {};
+      configDiv.querySelectorAll('[data-field]').forEach(input => {
+        const field = input.dataset.field;
+        if (input.type === 'checkbox') {
+          config[field] = input.checked;
+        } else {
+          config[field] = input.value;
+        }
+      });
+      
+      try {
+        const response = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service: channel,
+            ...config
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast(`${channel} config #${index + 1} test successful`, 'success');
+        } else {
+          showToast(`${channel} config #${index + 1} test failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`${channel} config #${index + 1} test error: ${error.message}`, 'error');
+      }
+    }
+
+    async function saveNotificationConfigs() {
+      const channels = {};
+      
+      ['telegram', 'teams', 'whatsapp'].forEach(channel => {
+        const container = document.getElementById(`${channel}-configs`);
+        if (!container) return;
+        
+        const configs = [];
+        Array.from(container.children).forEach(configDiv => {
+          const config = {};
+          configDiv.querySelectorAll('[data-field]').forEach(input => {
+            const field = input.dataset.field;
+            if (input.type === 'checkbox') {
+              config[field] = input.checked;
+            } else {
+              config[field] = input.value;
+            }
+          });
+          configs.push(config);
+        });
+        
+        channels[channel] = configs;
+      });
+      
+      try {
+        const response = await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channels })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('Notification configurations saved successfully', 'success');
+        } else {
+          showToast(`Failed to save configurations: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`Save error: ${error.message}`, 'error');
+      }
+    }
+
+    // Config tab functions
+    async function validatePIN() {
+      const pinField = document.getElementById('config-pin');
+      const newPinField = document.getElementById('config-new-pin');
+      
+      if (!pinField.value) {
+        showToast('Please enter current PIN', 'error');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/config/validate-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_pin: pinField.value,
+            new_pin: newPinField.value
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('PIN updated successfully', 'success');
+          pinField.value = '';
+          newPinField.value = '';
+        } else {
+          showToast(`PIN validation failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`PIN validation error: ${error.message}`, 'error');
+      }
+    }
+
+    async function reloadSystem() {
+      if (!confirm('This will restart the system. Continue?')) return;
+      
+      try {
+        const response = await fetch('/api/system/reload', {
+          method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('System reload initiated', 'success');
+          addToTerminal('config-output', 'System reload command executed', 'success');
+          if (data.output) {
+            addToTerminal('config-output', data.output, 'info');
+          }
+        } else {
+          showToast(`System reload failed: ${data.error}`, 'error');
+          addToTerminal('config-output', `Reload failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`System reload error: ${error.message}`, 'error');
+        addToTerminal('config-output', `Reload error: ${error.message}`, 'error');
+      }
+    }
+
+    // Handle config form submission
+    document.getElementById('config-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const baseUrlField = document.getElementById('config-base-url');
+      const portField = document.getElementById('config-port');
+      
+      try {
+        const response = await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            web: {
+              base_url: baseUrlField.value,
+              port: parseInt(portField.value) || 5000
+            }
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast('Web configuration saved successfully', 'success');
+          addToTerminal('config-output', 'Configuration saved', 'success');
+        } else {
+          showToast(`Failed to save configuration: ${data.error}`, 'error');
+          addToTerminal('config-output', `Save failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showToast(`Save error: ${error.message}`, 'error');
+        addToTerminal('config-output', `Save error: ${error.message}`, 'error');
+      }
+    });
+
+    // Toast notification system
+    function showToast(message, type = 'info') {
+      const toastContainer = document.getElementById('toast-container') || createToastContainer();
+      
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+      toast.setAttribute('role', 'alert');
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      
+      toastContainer.appendChild(toast);
+      
+      const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
+      bsToast.show();
+      
+      toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+      });
+    }
+
+    function createToastContainer() {
+      const container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'toast-container position-fixed top-0 end-0 p-3';
+      container.style.zIndex = '1055';
+      document.body.appendChild(container);
+      return container;
+    }
+
+    // Initialize everything when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      loadDashboardData();
+      loadConfigurationData();
+      
+      // Set up periodic refresh for dashboard
+      setInterval(loadDashboardData, 30000); // Every 30 seconds
+      
+      // Set up periodic refresh for process output
+      setInterval(loadProcessOutput, 5000); // Every 5 seconds
+    });
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -1086,7 +2112,7 @@
             <div class="row g-3">
               <div class="col-md-4">
                 <label class="form-label">BOT TOKEN</label>
-                <input type="password" class="form-control telegram-token" placeholder="Bot Token">
+                <input type="password" class="form-control telegram-token" placeholder="Bot Token" autocomplete="new-password">
               </div>
               <div class="col-md-3">
                 <label class="form-label">CHAT ID</label>
@@ -1213,10 +2239,10 @@
             <input type="text" class="form-control telegram-chat" placeholder="Chat ID">
           </div>
           <div class="col-md-2">
-            <label class="form-label">DEFAULT</label>
+            <label class="form-label">ENABLED</label>
             <div class="form-check mt-2">
-              <input class="form-check-input telegram-default" type="checkbox">
-              <label class="form-check-label">Use for notifications</label>
+              <input class="form-check-input telegram-enabled" type="checkbox">
+              <label class="form-check-label">Enable</label>
             </div>
           </div>
           <div class="col-md-3">
@@ -1293,100 +2319,17 @@
       newRecipient.innerHTML = `
         <div class="row g-3">
           <div class="col-md-4">
-            <label class="form-label">PHONE NUMBER</label>
-            <input type="text" class="form-control wa-phone" placeholder="628123456789">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">SESSION</label>
-            <select class="form-select wa-session">
-              <option value="gateway">gateway</option>
-            </select>
+            <label class="form-label">RECIPIENT NUMBER/GROUP</label>
+            <input type="text" class="form-control wa-recipient" placeholder="628xxxxxxxxx or group ID">
           </div>
           <div class="col-md-2">
-            <label class="form-label">ENABLED</label>
+            <label class="form-label">DEFAULT</label>
             <div class="form-check mt-2">
-              <input class="form-check-input wa-enabled" type="checkbox">
-              <label class="form-check-label">Enable</label>
+              <input class="form-check-input wa-default" type="checkbox">
+              <label class="form-check-label">Use for notifications</label>
             </div>
           </div>
-          <div class="col-md-3">
-            <label class="form-label">ACTIONS</label>
-            <div class="mt-2">
-              <button type="button" class="btn btn-hacker btn-sm me-1" onclick="testWhatsAppRecipient(${whatsappRecipientCount})">
-                <i class="fas fa-plug"></i> TEST
-              </button>
-              <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeWhatsAppRecipient(${whatsappRecipientCount})">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-      container.appendChild(newRecipient);
-      whatsappRecipientCount++;
-    }
-
-    function removeWhatsAppRecipient(index) {
-      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
-      if (recipient && document.querySelectorAll('.whatsapp-recipient').length > 1) {
-        recipient.remove();
-      }
-    }
-
-    function testWhatsAppRecipient(index) {
-      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
-      const phone = recipient.querySelector('.wa-phone').value;
-      const session = recipient.querySelector('.wa-session').value;
-      
-      if (!phone) {
-        addToTerminal('notifications-output', 'Please enter phone number', 'error');
-        return;
-      }
-      
-      addToTerminal('notifications-output', `Testing WhatsApp message to ${phone}...`, 'info');
-      // Add actual test logic here
-    }
-
-    function saveWhatsAppConfigs() {
-      const recipients = [];
-      document.querySelectorAll('.whatsapp-recipient').forEach(recipient => {
-        const phone = recipient.querySelector('.wa-phone').value;
-        const session = recipient.querySelector('.wa-session').value;
-        const enabled = recipient.querySelector('.wa-enabled').checked;
-        
-        if (phone) {
-          recipients.push({ phone: phone, session: session, enabled: enabled });
-        }
-      });
-      
-      addToTerminal('notifications-output', 'WhatsApp configurations saved', 'success');
-    }
-
-    function addWhatsAppRecipient() {
-      const container = document.getElementById('whatsapp-recipients');
-      const newRecipient = document.createElement('div');
-      newRecipient.className = 'whatsapp-recipient mb-3';
-      newRecipient.setAttribute('data-index', whatsappRecipientCount);
-      newRecipient.innerHTML = `
-        <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">PHONE NUMBER</label>
-            <input type="text" class="form-control wa-phone" placeholder="628123456789">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">SESSION</label>
-            <select class="form-select wa-session">
-              <option value="gateway">gateway</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">ENABLED</label>
-            <div class="form-check mt-2">
-              <input class="form-check-input wa-enabled" type="checkbox">
-              <label class="form-check-label">Enable</label>
-            </div>
-          </div>
-          <div class="col-md-3">
+          <div class="col-md-6">
             <label class="form-label">ACTIONS</label>
             <div class="mt-2">
               <button type="button" class="btn btn-hacker btn-sm me-1" onclick="testWhatsAppRecipient(${whatsappRecipientCount})">
@@ -1410,6 +2353,35 @@
       }
     }
 
+    // Save WhatsApp configurations
+    function saveWhatsAppConfigs() {
+      const recipients = [];
+      document.querySelectorAll('.whatsapp-recipient').forEach(recipient => {
+        const number = recipient.querySelector('.wa-recipient').value;
+        const isDefault = recipient.querySelector('.wa-default').checked;
+        
+        if (number) {
+          recipients.push({ number: number, default: isDefault });
+        }
+      });
+      
+      addToTerminal('notifications-output', 'WhatsApp configurations saved', 'success');
+    }
+
+    // Test WhatsApp recipient
+    async function testWhatsAppRecipient(index) {
+      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
+      const number = recipient.querySelector('.wa-recipient').value;
+      
+      if (!number) {
+        addToTerminal('notifications-output', 'Please enter recipient number', 'error');
+        return;
+      }
+      
+      addToTerminal('notifications-output', 'Testing WhatsApp message to: ' + number, 'info');
+      // Implementation would go here
+    }
+
     // Test connection functions
     async function testTelegramConnection(index) {
       const config = document.querySelector(`.telegram-config[data-index="${index}"]`);
@@ -1417,25 +2389,31 @@
       const chatId = config.querySelector('.telegram-chat').value;
       
       if (!token || !chatId) {
-        appendToTerminal('[ERROR] Telegram: Token and Chat ID required');
+        addToTerminal('notifications-output', 'Telegram: Token and Chat ID required', 'error');
         return;
       }
       
       try {
-        const response = await fetch('/api/test-telegram', {
+        addToTerminal('notifications-output', 'Testing Telegram connection...', 'info');
+        
+        const response = await fetch('/api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, chat_id: chatId })
+          body: JSON.stringify({ 
+            service: 'telegram', 
+            token: token, 
+            chat_id: chatId 
+          })
         });
         
         const data = await response.json();
         if (data.success) {
-          appendToTerminal('[SUCCESS] Telegram connection test passed');
+          addToTerminal('notifications-output', 'Telegram connection test passed', 'success');
         } else {
-          appendToTerminal('[ERROR] Telegram connection failed: ' + data.error);
+          addToTerminal('notifications-output', 'Telegram connection failed: ' + (data.error || 'Unknown error'), 'error');
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Telegram test failed: ' + error.message);
+        addToTerminal('notifications-output', 'Telegram test failed: ' + error.message, 'error');
       }
     }
 
@@ -1444,54 +2422,63 @@
       const webhook = config.querySelector('.teams-webhook').value;
       
       if (!webhook) {
-        appendToTerminal('[ERROR] Teams: Webhook URL required');
+        addToTerminal('notifications-output', 'Teams: Webhook URL required', 'error');
         return;
       }
       
       try {
-        const response = await fetch('/api/test-teams', {
+        addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
+        
+        const response = await fetch('/api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ webhook_url: webhook })
+          body: JSON.stringify({ 
+            service: 'teams', 
+            webhook_url: webhook 
+          })
         });
         
         const data = await response.json();
         if (data.success) {
-          appendToTerminal('[SUCCESS] Teams connection test passed');
+          addToTerminal('notifications-output', 'Teams connection test passed', 'success');
         } else {
-          appendToTerminal('[ERROR] Teams connection failed: ' + data.error);
+          addToTerminal('notifications-output', 'Teams connection failed: ' + (data.error || 'Unknown error'), 'error');
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Teams test failed: ' + error.message);
+        addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
       }
     }
 
-    async function testWhatsAppRecipient(index) {
-      const recipient = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
-      const number = recipient.querySelector('.wa-recipient').value;
-      const session = document.getElementById('wa-default-session').value;
+    // Test all notification channels
+    async function testAllChannels() {
+      addToTerminal('notifications-output', 'Testing all notification channels...', 'info');
       
-      if (!number) {
-        appendToTerminal('[ERROR] WhatsApp: Recipient number required');
-        return;
-      }
-      
-      try {
-        const response = await fetch('/api/test-whatsapp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number, session })
-        });
+      // Test Telegram if configured
+      const telegramConfigs = document.querySelectorAll('.telegram-config');
+      for (let i = 0; i < telegramConfigs.length; i++) {
+        const config = telegramConfigs[i];
+        const token = config.querySelector('.telegram-token').value;
+        const chatId = config.querySelector('.telegram-chat').value;
+        const enabled = config.querySelector('.telegram-enabled').checked;
         
-        const data = await response.json();
-        if (data.success) {
-          appendToTerminal('[SUCCESS] WhatsApp test message sent');
-        } else {
-          appendToTerminal('[ERROR] WhatsApp test failed: ' + data.error);
+        if (token && chatId && enabled) {
+          await testTelegramConnection(config.getAttribute('data-index'));
         }
-      } catch (error) {
-        appendToTerminal('[ERROR] WhatsApp test failed: ' + error.message);
       }
+      
+      // Test Teams if configured
+      const teamsConfigs = document.querySelectorAll('.teams-config');
+      for (let i = 0; i < teamsConfigs.length; i++) {
+        const config = teamsConfigs[i];
+        const webhook = config.querySelector('.teams-webhook').value;
+        const enabled = config.querySelector('.teams-enabled').checked;
+        
+        if (webhook && enabled) {
+          await testTeamsConnection(config.getAttribute('data-index'));
+        }
+      }
+      
+      addToTerminal('notifications-output', 'All channel tests completed', 'success');
     }
 
     // Save configuration functions
@@ -1500,28 +2487,37 @@
       document.querySelectorAll('.telegram-config').forEach(config => {
         const token = config.querySelector('.telegram-token').value;
         const chatId = config.querySelector('.telegram-chat').value;
-        const isDefault = config.querySelector('.telegram-default').checked;
+        const enabled = config.querySelector('.telegram-enabled').checked;
         
         if (token && chatId) {
-          configs.push({ token, chat_id: chatId, default: isDefault });
+          configs.push({ bot_token: token, chat_id: chatId, enabled: enabled });
         }
       });
       
+      if (configs.length === 0) {
+        addToTerminal('notifications-output', 'No valid Telegram configurations to save', 'error');
+        return;
+      }
+      
       try {
-        const response = await fetch('/api/save-telegram-configs', {
+        addToTerminal('notifications-output', 'Saving Telegram configurations...', 'info');
+        
+        const response = await fetch('/api/config/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ configs })
+          body: JSON.stringify({
+            channels: { telegram: configs[0] } // Save first config as primary
+          })
         });
         
         const data = await response.json();
         if (data.success) {
-          appendToTerminal('[SUCCESS] Telegram configurations saved');
+          addToTerminal('notifications-output', 'Telegram configuration saved successfully', 'success');
         } else {
-          appendToTerminal('[ERROR] Failed to save Telegram configs: ' + data.error);
+          addToTerminal('notifications-output', 'Failed to save Telegram config: ' + (data.error || 'Unknown error'), 'error');
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Save failed: ' + error.message);
+        addToTerminal('notifications-output', 'Telegram config save failed: ' + error.message, 'error');
       }
     }
 
@@ -1529,28 +2525,37 @@
       const configs = [];
       document.querySelectorAll('.teams-config').forEach(config => {
         const webhook = config.querySelector('.teams-webhook').value;
-        const isDefault = config.querySelector('.teams-default').checked;
+        const enabled = config.querySelector('.teams-enabled').checked;
         
         if (webhook) {
-          configs.push({ webhook_url: webhook, default: isDefault });
+          configs.push({ webhook_url: webhook, enabled: enabled });
         }
       });
       
+      if (configs.length === 0) {
+        addToTerminal('notifications-output', 'No valid Teams configurations to save', 'error');
+        return;
+      }
+      
       try {
-        const response = await fetch('/api/save-teams-configs', {
+        addToTerminal('notifications-output', 'Saving Teams configurations...', 'info');
+        
+        const response = await fetch('/api/config/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ configs })
+          body: JSON.stringify({
+            channels: { teams: configs[0] } // Save first config as primary
+          })
         });
         
         const data = await response.json();
         if (data.success) {
-          appendToTerminal('[SUCCESS] Teams configurations saved');
+          addToTerminal('notifications-output', 'Teams configuration saved successfully', 'success');
         } else {
-          appendToTerminal('[ERROR] Failed to save Teams configs: ' + data.error);
+          addToTerminal('notifications-output', 'Failed to save Teams config: ' + (data.error || 'Unknown error'), 'error');
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Save failed: ' + error.message);
+        addToTerminal('notifications-output', 'Teams config save failed: ' + error.message, 'error');
       }
     }
 
@@ -1569,24 +2574,310 @@
       const defaultSession = document.getElementById('wa-default-session').value;
       
       try {
-        const response = await fetch('/api/save-whatsapp-configs', {
+        addToTerminal('notifications-output', 'Saving WhatsApp configurations...', 'info');
+        
+        const response = await fetch('/api/config/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            gateway_url: gatewayUrl,
-            default_session: defaultSession,
-            recipients 
+          body: JSON.stringify({
+            channels: { 
+              whatsapp: { 
+                enabled: true,
+                session_name: defaultSession,
+                recipients: recipients
+              }
+            },
+            whatsapp_gateway: {
+              base_url: gatewayUrl
+            }
           })
         });
         
         const data = await response.json();
         if (data.success) {
-          appendToTerminal('[SUCCESS] WhatsApp configurations saved');
+          addToTerminal('notifications-output', 'WhatsApp configuration saved successfully', 'success');
         } else {
-          appendToTerminal('[ERROR] Failed to save WhatsApp configs: ' + data.error);
+          addToTerminal('notifications-output', 'Failed to save WhatsApp config: ' + (data.error || 'Unknown error'), 'error');
         }
       } catch (error) {
-        appendToTerminal('[ERROR] Save failed: ' + error.message);
+        addToTerminal('notifications-output', 'WhatsApp config save failed: ' + error.message, 'error');
+      }
+    }
+
+    // Test notification functions
+    async function testTelegramNotification() {
+      try {
+        addToTerminal('notifications-output', 'Testing Telegram notification...', 'info');
+        
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'telegram',
+            message: 'Test notification from SentinelOne Monitor'
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', 'Telegram test notification sent successfully', 'success');
+        } else {
+          addToTerminal('notifications-output', 'Telegram test failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', 'Telegram test failed: ' + error.message, 'error');
+      }
+    }
+
+    async function testTeamsNotification() {
+      try {
+        addToTerminal('notifications-output', 'Testing Teams notification...', 'info');
+        
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'teams',
+            message: 'Test notification from SentinelOne Monitor'
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', 'Teams test notification sent successfully', 'success');
+        } else {
+          addToTerminal('notifications-output', 'Teams test failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
+      }
+    }
+
+    async function testWhatsAppNotification() {
+      try {
+        addToTerminal('notifications-output', 'Testing WhatsApp notification...', 'info');
+        
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            type: 'whatsapp',
+            message: 'Test notification from SentinelOne Monitor'
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', 'WhatsApp test notification sent successfully', 'success');
+        } else {
+          addToTerminal('notifications-output', 'WhatsApp test failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', 'WhatsApp test failed: ' + error.message, 'error');
+      }
+    }
+
+    // Add/Remove config functions
+    function addTelegramConfig() {
+      const container = document.getElementById('telegram-configs');
+      const configCount = container.children.length;
+      
+      const configHtml = `
+        <div class="telegram-config border rounded p-3 mb-3" data-index="${configCount}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Telegram Config #${configCount + 1}</h6>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTelegramConfig(this)">
+              <i class="fas fa-trash"></i> Remove
+            </button>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <label class="form-label">Bot Token</label>
+              <input type="text" class="form-control telegram-token" placeholder="Bot Token">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Chat ID</label>
+              <input type="text" class="form-control telegram-chat" placeholder="Chat ID">
+            </div>
+            <div class="col-md-2">
+              <div class="form-check mt-4">
+                <input class="form-check-input telegram-enabled" type="checkbox" checked>
+                <label class="form-check-label">Enabled</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      container.insertAdjacentHTML('beforeend', configHtml);
+      addToTerminal('notifications-output', 'New Telegram configuration added', 'info');
+    }
+
+    function removeTelegramConfig(button) {
+      const config = button.closest('.telegram-config');
+      config.remove();
+      addToTerminal('notifications-output', 'Telegram configuration removed', 'info');
+    }
+
+    function addTeamsConfig() {
+      const container = document.getElementById('teams-configs');
+      const configCount = container.children.length;
+      
+      const configHtml = `
+        <div class="teams-config border rounded p-3 mb-3" data-index="${configCount}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Teams Config #${configCount + 1}</h6>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTeamsConfig(this)">
+              <i class="fas fa-trash"></i> Remove
+            </button>
+          </div>
+          <div class="row">
+            <div class="col-md-10">
+              <label class="form-label">Webhook URL</label>
+              <input type="text" class="form-control teams-webhook" placeholder="Teams Webhook URL">
+            </div>
+            <div class="col-md-2">
+              <div class="form-check mt-4">
+                <input class="form-check-input teams-default" type="checkbox">
+                <label class="form-check-label">Default</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      container.insertAdjacentHTML('beforeend', configHtml);
+      addToTerminal('notifications-output', 'New Teams configuration added', 'info');
+    }
+
+    function removeTeamsConfig(button) {
+      const config = button.closest('.teams-config');
+      config.remove();
+      addToTerminal('notifications-output', 'Teams configuration removed', 'info');
+    }
+
+    function addWhatsAppRecipient() {
+      const container = document.getElementById('whatsapp-recipients');
+      const recipientCount = container.children.length;
+      
+      const recipientHtml = `
+        <div class="whatsapp-recipient border rounded p-3 mb-3" data-index="${recipientCount}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Recipient #${recipientCount + 1}</h6>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeWhatsAppRecipient(this)">
+              <i class="fas fa-trash"></i> Remove
+            </button>
+          </div>
+          <div class="row">
+            <div class="col-md-10">
+              <label class="form-label">Phone Number</label>
+              <input type="text" class="form-control wa-recipient" placeholder="Phone Number (e.g., +1234567890)">
+            </div>
+            <div class="col-md-2">
+              <div class="form-check mt-4">
+                <input class="form-check-input wa-default" type="checkbox">
+                <label class="form-check-label">Default</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      container.insertAdjacentHTML('beforeend', recipientHtml);
+      addToTerminal('notifications-output', 'New WhatsApp recipient added', 'info');
+    }
+
+    function removeWhatsAppRecipient(button) {
+      const recipient = button.closest('.whatsapp-recipient');
+      recipient.remove();
+      addToTerminal('notifications-output', 'WhatsApp recipient removed', 'info');
+    }
+
+
+    async function testTeamsConnection(configIndex) {
+      try {
+        const config = document.querySelector(`.teams-config[data-index="${configIndex}"]`);
+        if (!config) {
+          addToTerminal('notifications-output', 'Teams config not found', 'error');
+          return;
+        }
+
+        const webhookUrl = config.querySelector('.teams-webhook').value;
+
+        if (!webhookUrl) {
+          addToTerminal('notifications-output', 'Please fill in the Webhook URL', 'error');
+          return;
+        }
+
+        addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
+
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'teams',
+            config: { webhook_url: webhookUrl },
+            message: 'Test message from SentinelOne Monitor'
+          })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', `Teams config #${parseInt(configIndex) + 1} test successful`, 'success');
+        } else {
+          addToTerminal('notifications-output', `Teams config #${parseInt(configIndex) + 1} test failed: ${data.error || 'Unknown error'}`, 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', `Teams connection test failed: ${error.message}`, 'error');
+      }
+    }
+
+    async function testWhatsAppRecipient(recipientIndex) {
+      try {
+        const recipient = document.querySelector(`.whatsapp-recipient[data-index="${recipientIndex}"]`);
+        if (!recipient) {
+          addToTerminal('notifications-output', 'WhatsApp recipient not found', 'error');
+          return;
+        }
+
+        const number = recipient.querySelector('.wa-recipient').value;
+        const gatewayUrl = document.getElementById('wa-gateway-url').value;
+        const sessionName = document.getElementById('wa-default-session').value;
+
+        if (!number) {
+          addToTerminal('notifications-output', 'Please fill in the phone number', 'error');
+          return;
+        }
+
+        if (!gatewayUrl || !sessionName) {
+          addToTerminal('notifications-output', 'Please configure Gateway URL and Session Name first', 'error');
+          return;
+        }
+
+        addToTerminal('notifications-output', 'Testing WhatsApp recipient...', 'info');
+
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'whatsapp',
+            config: { 
+              gateway_url: gatewayUrl,
+              session_name: sessionName,
+              recipient: number
+            },
+            message: 'Test message from SentinelOne Monitor'
+          })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', `WhatsApp recipient #${parseInt(recipientIndex) + 1} test successful`, 'success');
+        } else {
+          addToTerminal('notifications-output', `WhatsApp recipient #${parseInt(recipientIndex) + 1} test failed: ${data.error || 'Unknown error'}`, 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', `WhatsApp recipient test failed: ${error.message}`, 'error');
       }
     }
 
@@ -2043,20 +3334,15 @@
           document.getElementById('config-new-pin').value = '';
           document.getElementById('config-confirm-pin').value = '';
         } else {
-          addToTerminal('config-output', `Error: ${data.error}`, 'error');
+          addToTerminal('config-output', data.error || 'Failed to save configuration', 'error');
         }
       } catch (error) {
-        addToTerminal('config-output', `Error: ${error.message}`, 'error');
+        addToTerminal('config-output', 'Config save request failed: ' + error.message, 'error');
       }
     });
 
-    // Load trees when dashboard tab is shown
-    document.addEventListener('DOMContentLoaded', function() {
-      loadLogsTree();
-      loadStorageTree();
-    });
-
-    async function connectSession(sessionName) {
+    // WhatsApp connection function
+    async function connectWhatsAppSession(sessionName) {
       try {
         const response = await fetch('/api/wa/connect', {
           method: 'POST',
@@ -2075,7 +3361,7 @@
       } catch (error) {
         appendToTerminal('[ERROR] Session connection error: ' + error.message);
       }
-    });
+    }
 
     // Test system configuration
     async function testSystemConfig() {
@@ -2187,7 +3473,7 @@
       }
     }
 
-    // Connection test functions
+    // Global notification test functions
     async function testTelegramConnection(index) {
       const config = document.querySelector(`.telegram-config[data-index="${index}"]`);
       const token = config.querySelector('.telegram-token').value;
@@ -2201,18 +3487,17 @@
       try {
         addToTerminal('notifications-output', 'Testing Telegram connection...', 'info');
         
-        const response = await fetch('/api/test-connection', {
+        const response = await fetch('/api/test-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'telegram', 
-            token: token, 
-            chat_id: chatId 
+          body: JSON.stringify({
+            type: 'telegram',
+            config: { token, chat_id: chatId },
+            message: 'Test message from SentinelOne Monitor'
           })
         });
         
         const data = await response.json();
-        
         if (data.success) {
           addToTerminal('notifications-output', 'Telegram connection successful', 'success');
         } else {
@@ -2235,17 +3520,17 @@
       try {
         addToTerminal('notifications-output', 'Testing Teams connection...', 'info');
         
-        const response = await fetch('/api/test-connection', {
+        const response = await fetch('/api/test-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'teams', 
-            webhook_url: webhook 
+          body: JSON.stringify({
+            type: 'teams',
+            config: { webhook_url: webhook },
+            message: 'Test message from SentinelOne Monitor'
           })
         });
         
         const data = await response.json();
-        
         if (data.success) {
           addToTerminal('notifications-output', 'Teams connection successful', 'success');
         } else {
@@ -2253,6 +3538,88 @@
         }
       } catch (error) {
         addToTerminal('notifications-output', 'Teams test failed: ' + error.message, 'error');
+      }
+    }
+
+    async function testWhatsAppRecipient(index) {
+      const config = document.querySelector(`.whatsapp-recipient[data-index="${index}"]`);
+      const recipient = config.querySelector('.whatsapp-number').value;
+      
+      if (!recipient) {
+        addToTerminal('notifications-output', 'Please enter recipient number', 'error');
+        return;
+      }
+      
+      try {
+        addToTerminal('notifications-output', 'Testing WhatsApp connection...', 'info');
+        
+        // Get WhatsApp gateway config
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        
+        if (!configData.success || !configData.config?.whatsapp_gateway) {
+          addToTerminal('notifications-output', 'WhatsApp gateway not configured', 'error');
+          return;
+        }
+        
+        const gatewayConfig = configData.config.whatsapp_gateway;
+        
+        const response = await fetch('/api/test-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'whatsapp',
+            config: {
+              gateway_url: gatewayConfig.base_url,
+              session_name: gatewayConfig.session_name,
+              recipient: recipient
+            },
+            message: 'Test message from SentinelOne Monitor'
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('notifications-output', 'WhatsApp connection successful', 'success');
+        } else {
+          addToTerminal('notifications-output', 'WhatsApp connection failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('notifications-output', 'WhatsApp test failed: ' + error.message, 'error');
+      }
+    }
+
+    // Global function for SentinelOne connection test
+    async function testSentinelConnection() {
+      const baseUrl = document.getElementById('sentinel-url').value;
+      const apiToken = document.getElementById('sentinel-token').value;
+      
+      if (!baseUrl || !apiToken) {
+        addToTerminal('sentinelone-output', 'Please enter both Base URL and API Token', 'error');
+        return;
+      }
+      
+      try {
+        addToTerminal('sentinelone-output', 'Testing SentinelOne connection...', 'info');
+        
+        const response = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            service: 'sentinelone', 
+            url: baseUrl,
+            token: apiToken
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          addToTerminal('sentinelone-output', 'SentinelOne connection successful', 'success');
+        } else {
+          addToTerminal('sentinelone-output', 'SentinelOne connection failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        addToTerminal('sentinelone-output', 'Connection test failed: ' + error.message, 'error');
       }
     }
 
@@ -2351,6 +3718,13 @@
       loadSentinelOneConfig();
       
       // Start periodic updates
+      refreshStatistics();
+      setInterval(refreshStatistics, 30000); // Refresh every 30 seconds
+      
+      // Start live log refresh
+      refreshLiveLog();
+      setInterval(refreshLiveLog, 5000); // Refresh every 5 seconds
+      
       setInterval(() => {
         // Update system status periodically
       }, 5000);
@@ -2437,40 +3811,182 @@
       }
     });
 
-    // Test SentinelOne connection
-    async function testSentinelConnection() {
-      const baseUrl = document.getElementById('sentinel-url').value;
-      const apiToken = document.getElementById('sentinel-token').value;
+  // Statistics refresh function
+  async function refreshStatistics() {
+    try {
+      const response = await fetch('/api/statistics');
+      const data = await response.json();
       
-      if (!baseUrl || !apiToken) {
-        addToTerminal('sentinelone-output', 'Please enter both Base URL and API Token', 'error');
-        return;
+      if (data.success) {
+        document.getElementById('threats-count').textContent = data.statistics.threats_detected;
+        document.getElementById('alerts-count').textContent = data.statistics.alerts_sent;
+        document.getElementById('uptime').textContent = data.statistics.uptime;
       }
+    } catch (error) {
+      console.error('Failed to refresh statistics:', error);
+    }
+  }
+
+  // File management functions
+  async function loadFiles(path = '', containerId = 'logs-file-list') {
+    try {
+      const response = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+      const data = await response.json();
       
-      try {
-        addToTerminal('sentinelone-output', 'Testing SentinelOne connection...', 'info');
+      if (data.success) {
+        const container = document.getElementById(containerId);
+        let html = '';
         
-        const response = await fetch('/api/test-connection', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            service: 'sentinelone', 
-            url: baseUrl,
-            token: apiToken
-          })
+        if (path) {
+          const parentPath = path.split('/').slice(0, -1).join('/');
+          html += `
+            <div class="file-item mb-2">
+              <button class="btn btn-outline-secondary btn-sm" onclick="loadFiles('${parentPath}', '${containerId}')">
+                <i class="fas fa-arrow-left"></i> Back
+              </button>
+            </div>
+          `;
+        }
+        
+        data.files.forEach(file => {
+          const icon = file.type === 'directory' ? 'fas fa-folder' : 'fas fa-file';
+          const size = file.type === 'directory' ? '' : `(${formatFileSize(file.size)})`;
+          
+          html += `
+            <div class="file-item mb-2 d-flex justify-content-between align-items-center">
+              <div>
+                <i class="${icon} text-primary"></i>
+                ${file.type === 'directory' ? 
+                  `<a href="#" onclick="loadFiles('${file.path}', '${containerId}')" class="text-decoration-none ms-2">${file.name}</a>` :
+                  `<a href="#" onclick="viewFile('${file.path}')" class="text-decoration-none ms-2">${file.name}</a>`
+                }
+                <small class="text-muted ms-2">${size}</small>
+              </div>
+              ${file.type === 'file' ? `
+                <div>
+                  <button class="btn btn-hacker btn-sm" onclick="downloadFile('${file.path}')">
+                    <i class="fas fa-download"></i>
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          `;
         });
         
-        const data = await response.json();
-        
-        if (data.success) {
-          addToTerminal('sentinelone-output', 'SentinelOne connection successful', 'success');
-        } else {
-          addToTerminal('sentinelone-output', 'SentinelOne connection failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (error) {
-        addToTerminal('sentinelone-output', 'Connection test failed: ' + error.message, 'error');
+        container.innerHTML = html || '<div class="text-muted">No files found</div>';
       }
+    } catch (error) {
+      document.getElementById(containerId).innerHTML = '<div class="text-danger">Error loading files</div>';
     }
-  </script>
+  }
+
+  async function viewFile(path) {
+    try {
+      const response = await fetch(`/api/file-content?path=${encodeURIComponent(path)}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        showFileModal(path, data.content, data.truncated);
+      }
+    } catch (error) {
+      console.error('Failed to view file:', error);
+    }
+  }
+
+  function showFileModal(filename, content, truncated) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title">${filename}</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <pre class="bg-black p-3 rounded" style="max-height: 400px; overflow-y: auto;">${content}</pre>
+            ${truncated ? '<div class="text-warning">File truncated - showing first 30 lines</div>' : ''}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-hacker" onclick="downloadFile('${filename}')">
+              <i class="fas fa-download"></i> Download
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => {
+      document.body.removeChild(modal);
+    });
+  }
+
+  function downloadFile(path) {
+    window.open(`/api/file-content?path=${encodeURIComponent(path)}&download=true`, '_blank');
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  // Live log functions
+  async function refreshLiveLog() {
+    try {
+      const response = await fetch('/api/live-log');
+      const data = await response.json();
+      
+      if (data.success) {
+        const terminal = document.getElementById('terminal-output');
+        terminal.innerHTML = `<pre class="mb-0">${data.content}</pre>`;
+        
+        if (autoScrollEnabled) {
+          terminal.scrollTop = terminal.scrollHeight;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh live log:', error);
+    }
+  }
+
+  async function clearLiveLog() {
+    try {
+      const response = await fetch('/api/clear-log', { method: 'POST' });
+      const data = await response.json();
+      
+      if (data.success) {
+        document.getElementById('terminal-output').innerHTML = '<div class="text-success">Log cleared</div>';
+      }
+    } catch (error) {
+      console.error('Failed to clear log:', error);
+    }
+  }
+
+  // Toggle section function
+  function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    const isExpanded = section.classList.contains('show');
+    
+    if (!isExpanded) {
+      section.classList.add('show');
+      // Load files when expanding
+      if (sectionId === 'logs-content') {
+        loadFiles('logs', 'logs-file-list');
+      } else if (sectionId === 'backup-content') {
+        loadFiles('storage', 'backup-file-list');
+      }
+    } else {
+      section.classList.remove('show');
+    }
+  }
+</script>
 </body>
 </html>
