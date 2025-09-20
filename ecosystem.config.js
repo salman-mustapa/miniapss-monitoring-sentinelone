@@ -14,9 +14,9 @@ module.exports = {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/dcs_s4lm4n/Project/sentinelone_miniapps/miniapps-monitoring'
       },
-      log_file: './logs/web.log',
-      out_file: './logs/web-out.log',
-      error_file: './logs/web-error.log',
+      log_file: '/dev/null',
+      out_file: '/dev/null',
+      error_file: '/dev/null',
       time: true
     },
     {
@@ -33,9 +33,9 @@ module.exports = {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/dcs_s4lm4n/Project/sentinelone_miniapps/miniapps-monitoring'
       },
-      log_file: './logs/polling.log',
-      out_file: './logs/polling-out.log',
-      error_file: './logs/polling-error.log',
+      log_file: '/dev/null',
+      out_file: '/dev/null',
+      error_file: '/dev/null',
       time: true
     },
     {
@@ -52,9 +52,9 @@ module.exports = {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/dcs_s4lm4n/Project/sentinelone_miniapps/miniapps-monitoring'
       },
-      log_file: './logs/backup.log',
-      out_file: './logs/backup-out.log',
-      error_file: './logs/backup-error.log',
+      log_file: '/dev/null',
+      out_file: '/dev/null',
+      error_file: '/dev/null',
       time: true,
       cron_restart: '0 2 * * *' // Restart daily at 2 AM
     }

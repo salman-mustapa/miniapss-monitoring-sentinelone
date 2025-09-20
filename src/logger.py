@@ -11,6 +11,7 @@ LOG_ALL = os.path.join(LOG_DIR, "all.log")
 LOG_ERROR = os.path.join(LOG_DIR, "error.log")
 LOG_SUCCESS = os.path.join(LOG_DIR, "success.log")
 LOG_INFO = os.path.join(LOG_DIR, "info.log")
+LOG_WARNING = os.path.join(LOG_DIR, "warning.log")
 
 # custom level SUCCESS
 SUCCESS_LEVEL_NUM = 25
@@ -63,6 +64,13 @@ def init_logging():
     success_handler.setFormatter(formatter)
     success_handler.addFilter(lambda record: record.levelno == SUCCESS_LEVEL_NUM)
     logger.addHandler(success_handler)
+
+    # warning log (only warning level)
+    warning_handler = logging.FileHandler(LOG_WARNING, encoding='utf-8')
+    warning_handler.setLevel(logging.WARNING)
+    warning_handler.setFormatter(formatter)
+    warning_handler.addFilter(lambda record: record.levelno == logging.WARNING)
+    logger.addHandler(warning_handler)
 
     # console
     console_handler = logging.StreamHandler()

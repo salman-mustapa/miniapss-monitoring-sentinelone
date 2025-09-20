@@ -1052,22 +1052,6 @@ async def get_live_log(request: Request):
         log_error(f"Failed to read live log: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.post("/api/clear-log")
-async def clear_log(request: Request):
-    """Clear the main log file"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        log_file = "logs/all.log"
-        if os.path.exists(log_file):
-            with open(log_file, 'w') as f:
-                f.write("")
-        return JSONResponse({"success": True, "message": "Log cleared"})
-    except Exception as e:
-        log_error(f"Failed to clear log: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/whatsapp/sessions")
 async def get_whatsapp_sessions(request: Request):
@@ -1361,50 +1345,18 @@ async def wa_send(number: str = Form(...), message: str = Form(...), session: st
         wb = get_whatsapp_bridge()
         resp = wb.send_message(number, message, session)
         
-        # Log WA messages in structured format by session and number
+        # Log WA messages via application logger
         session_name = session or wb.default_session
-        log_dir = os.path.join("logs", "wa", session_name)
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f"{number}.json")
         
-        ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3] + "Z"
-        new_log_entry = {
-            "timestamp": ts,
-            "session": session_name,
-            "target": number,
-            "message": message,
-            "status": "sent" if resp.get("success") else "failed",
-            "response": resp
-        }
+        # Log message via application logger instead of file
+        status = "sent" if resp.get("success") else "failed"
+        log_info(f"WhatsApp message {status} to {number} via session {session_name}: {message[:50]}...")
         
-        # Read existing log file or create new structure
-        if os.path.exists(log_file):
-            try:
-                with open(log_file, "r", encoding="utf-8") as f:
-                    log_data = json.load(f)
-            except:
-                log_data = {
-                    "success": True,
-                    "session": session_name,
-                    "target": number,
-                    "logs": []
-                }
+        if resp.get("success"):
+            log_success(f"WhatsApp message sent to {number} via session {session_name}")
         else:
-            log_data = {
-                "success": True,
-                "session": session_name,
-                "target": number,
-                "logs": []
-            }
+            log_error(f"WhatsApp message failed to {number} via session {session_name}: {resp.get('error', 'Unknown error')}")
         
-        # Add new log entry
-        log_data["logs"].append(new_log_entry)
-        
-        # Write back to file
-        with open(log_file, "w", encoding="utf-8") as f:
-            json.dump(log_data, f, indent=2, ensure_ascii=False)
-        
-        log_success(f"WA message sent to {number} via session {session or wb.default_session}")
         return JSONResponse(resp)
     except Exception as e:
         log_error(f"Error sending WA message: {e}")
@@ -1426,50 +1378,16 @@ async def wa_logs(session: str = Query(None)):
 
 @app.get("/api/wa-logs")
 async def get_wa_logs(session: str = Query(None)):
-    """Get local WhatsApp logs by session"""
+    """Redirect to WhatsApp gateway logs API"""
     r = require_auth_redirect()
     if r:
         return r
     try:
-        logs_data = {}
-        base_log_dir = os.path.join("logs", "wa")
-        
-        if not os.path.exists(base_log_dir):
-            return JSONResponse({"sessions": {}})
-        
-        # If specific session requested
-        if session:
-            session_dir = os.path.join(base_log_dir, session)
-            if os.path.exists(session_dir):
-                logs_data[session] = {}
-                for file in os.listdir(session_dir):
-                    if file.endswith('.json'):
-                        number = file[:-5]  # Remove .json extension
-                        file_path = os.path.join(session_dir, file)
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                logs_data[session][number] = json.load(f)
-                        except Exception as e:
-                            log_error(f"Error reading log file {file_path}: {e}")
-        else:
-            # Get all sessions
-            for session_name in os.listdir(base_log_dir):
-                session_dir = os.path.join(base_log_dir, session_name)
-                if os.path.isdir(session_dir):
-                    logs_data[session_name] = {}
-                    for file in os.listdir(session_dir):
-                        if file.endswith('.json'):
-                            number = file[:-5]  # Remove .json extension
-                            file_path = os.path.join(session_dir, file)
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    logs_data[session_name][number] = json.load(f)
-                            except Exception as e:
-                                log_error(f"Error reading log file {file_path}: {e}")
-        
-        return JSONResponse({"sessions": logs_data})
+        wb = get_whatsapp_bridge()
+        result = wb.list_logs(session)
+        return JSONResponse(result)
     except Exception as e:
-        log_error(f"Error fetching local WA logs: {e}")
+        log_error(f"Error fetching WhatsApp gateway logs: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/test-notification")
@@ -1552,8 +1470,8 @@ async def test_notification(request: Request):
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/config/save")
-async def save_config_api(request: Request):
-    """Save configuration via API"""
+async def save_unified_config(request: Request):
+    """Unified configuration save endpoint - handles all config types"""
     r = require_auth_redirect()
     if r:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -1562,33 +1480,44 @@ async def save_config_api(request: Request):
         data = await request.json()
         cfg = safe_load_cfg()
         
-        # Update configuration with new data
-        if "sentinelone" in data:
-            cfg["sentinelone"] = cfg.get("sentinelone", {})
-            cfg["sentinelone"].update(data["sentinelone"])
+        # Handle PIN validation for system config changes
+        if any(key in data for key in ['current_pin', 'new_pin', 'web']):
+            current_pin = data.get('current_pin')
+            if current_pin and current_pin != get_pin():
+                return JSONResponse({"success": False, "error": "Current PIN is incorrect"})
+            
+            # Validate new PIN if provided
+            new_pin = data.get('new_pin')
+            confirm_pin = data.get('confirm_pin')
+            if new_pin:
+                if new_pin != confirm_pin:
+                    return JSONResponse({"success": False, "error": "New PIN confirmation does not match"})
+                if len(new_pin) < 4:
+                    return JSONResponse({"success": False, "error": "PIN must be at least 4 characters"})
+                cfg["web"] = cfg.get("web", {})
+                cfg["web"]["pin"] = new_pin
         
-        if "channels" in data:
-            cfg["channels"] = cfg.get("channels", {})
-            cfg["channels"].update(data["channels"])
+        # Update all configuration sections
+        config_sections = ["sentinelone", "channels", "whatsapp_gateway", "polling", "backup", "web"]
+        for section in config_sections:
+            if section in data:
+                cfg[section] = cfg.get(section, {})
+                cfg[section].update(data[section])
         
-        if "whatsapp_gateway" in data:
-            cfg["whatsapp_gateway"] = cfg.get("whatsapp_gateway", {})
-            cfg["whatsapp_gateway"].update(data["whatsapp_gateway"])
+        # Handle interval conversions for polling/backup
+        for section in ["polling", "backup"]:
+            if section in data and "interval" in data[section]:
+                interval = int(data[section].get('interval', 60))
+                interval_type = data[section].get('interval_type', 'minutes')
+                interval_seconds = interval * (3600 if interval_type == 'hours' else 60)
+                cfg[section]['interval_seconds'] = interval_seconds
         
-        if "polling" in data:
-            cfg["polling"] = cfg.get("polling", {})
-            cfg["polling"].update(data["polling"])
-        
-        if "backup" in data:
-            cfg["backup"] = cfg.get("backup", {})
-            cfg["backup"].update(data["backup"])
-        
-        save_config(cfg)
-        log_success("Configuration saved via API")
+        safe_save_cfg(cfg)
+        log_success(f"Configuration saved: {', '.join(data.keys())}")
         return JSONResponse({"success": True, "message": "Configuration saved successfully"})
     
     except Exception as e:
-        log_error(f"Failed to save config via API: {e}")
+        log_error(f"Failed to save configuration: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.get("/api/config")
@@ -1788,37 +1717,6 @@ async def receive_alert(request: Request):
 
     return JSONResponse({"status": "ok", "file": filepath})
 
-@app.post("/api/wa/config")
-async def save_wa_config(request: Request):
-    """Save WhatsApp configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        base_url = data.get('base_url', '')
-        session_name = data.get('session_name', 'default')
-        
-        # Load current config
-        cfg = safe_load_cfg()
-        
-        # Update WhatsApp config
-        if 'whatsapp' not in cfg:
-            cfg['whatsapp'] = {}
-        
-        cfg['whatsapp']['base_url'] = base_url
-        cfg['whatsapp']['session_name'] = session_name
-        
-        # Save config
-        save_config(cfg)
-        log_success(f"WhatsApp config saved: {base_url}, session: {session_name}")
-        
-        return JSONResponse({"success": True, "message": "Configuration saved successfully"})
-        
-    except Exception as e:
-        log_error(f"Failed to save WhatsApp config: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 # ------------- SentinelOne Advanced API Routes -------------
 @app.get("/sentinelone-advanced", response_class=HTMLResponse)
@@ -1905,41 +1803,6 @@ async def get_sentinel_data(request: Request):
         log_error(f"SentinelOne data retrieval error: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
-@app.post("/api/sentinel/save-polling-config")
-async def save_polling_config(request: Request):
-    """Save SentinelOne polling configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        
-        cfg = safe_load_cfg()
-        if 'polling' not in cfg:
-            cfg['polling'] = {}
-        
-        # Update polling configuration
-        cfg['polling']['interval_seconds'] = int(data.get('interval', 60))
-        cfg['polling']['timeout_seconds'] = int(data.get('timeout', 30))
-        cfg['polling']['retry_attempts'] = int(data.get('retries', 3))
-        cfg['polling']['endpoints'] = data.get('endpoints', [])
-        
-        # Parse filters JSON
-        try:
-            filters_str = data.get('filters', '{}')
-            cfg['polling']['filters'] = json.loads(filters_str) if filters_str else {}
-        except json.JSONDecodeError:
-            cfg['polling']['filters'] = {}
-        
-        save_config(cfg)
-        log_success("SentinelOne polling configuration saved")
-        
-        return JSONResponse({"success": True, "message": "Polling configuration saved successfully"})
-        
-    except Exception as e:
-        log_error(f"Failed to save polling configuration: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/sentinel/test-polling")
 async def test_polling_config(request: Request):
@@ -1996,35 +1859,6 @@ async def test_polling_config(request: Request):
         log_error(f"Polling test error: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
-@app.post("/api/backup/save-config")
-async def save_backup_config(request: Request):
-    """Save backup configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        
-        cfg = safe_load_cfg()
-        if 'backup' not in cfg:
-            cfg['backup'] = {}
-        
-        # Update backup configuration
-        cfg['backup']['frequency'] = data.get('frequency', 'daily')
-        cfg['backup']['retention_days'] = int(data.get('retention', 30))
-        cfg['backup']['compression'] = data.get('compression', 'gzip')
-        cfg['backup']['location'] = data.get('location', './storage/backups')
-        cfg['backup']['types'] = data.get('types', {})
-        
-        save_config(cfg)
-        log_success("Backup configuration saved")
-        
-        return JSONResponse({"success": True, "message": "Backup configuration saved successfully"})
-        
-    except Exception as e:
-        log_error(f"Failed to save backup configuration: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/backup/run-now")
 async def run_backup_now(request: Request):
@@ -2062,53 +1896,7 @@ async def run_backup_now(request: Request):
         log_error(f"Failed to run backup: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
-@app.post("/api/notifications/save-multi-config")
-async def save_multi_notification_config(request: Request):
-    """Save multi-session/multi-webhook notification configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        
-        cfg = safe_load_cfg()
-        if 'notifications' not in cfg:
-            cfg['notifications'] = {}
-        
-        # Save Telegram configurations
-        if 'telegram' in data:
-            cfg['notifications']['telegram'] = {
-                'enabled': data['telegram'].get('enabled', False),
-                'configs': data['telegram'].get('configs', []),
-                'default_config': data['telegram'].get('default_config', 0)
-            }
-        
-        # Save Teams configurations
-        if 'teams' in data:
-            cfg['notifications']['teams'] = {
-                'enabled': data['teams'].get('enabled', False),
-                'configs': data['teams'].get('configs', []),
-                'default_config': data['teams'].get('default_config', 0)
-            }
-        
-        # Save WhatsApp configurations
-        if 'whatsapp' in data:
-            cfg['notifications']['whatsapp'] = {
-                'enabled': data['whatsapp'].get('enabled', False),
-                'gateway_url': data['whatsapp'].get('gateway_url', ''),
-                'configs': data['whatsapp'].get('configs', []),
-                'default_config': data['whatsapp'].get('default_config', 0)
-            }
-        
-        save_config(cfg)
-        log_success("Multi-notification configuration saved")
-        
-        return JSONResponse({"success": True, "message": "Notification configuration saved successfully"})
-        
-    except Exception as e:
-        log_error(f"Failed to save notification configuration: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
+
 
 @app.post("/api/notifications/test-config")
 async def test_notification_config(request: Request):
@@ -2179,40 +1967,6 @@ async def test_notification_config(request: Request):
         return JSONResponse({"success": False, "error": str(e)})
 
 # ------------- Polling and Backup Control API Routes -------------
-@app.post("/api/polling/save-config")
-async def save_polling_interval_config(request: Request):
-    """Save polling interval configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        interval = int(data.get('interval', 60))
-        interval_type = data.get('interval_type', 'minutes')
-        
-        # Convert to seconds
-        if interval_type == 'hours':
-            interval_seconds = interval * 3600
-        else:  # minutes
-            interval_seconds = interval * 60
-        
-        cfg = safe_load_cfg()
-        if 'polling' not in cfg:
-            cfg['polling'] = {}
-        
-        cfg['polling']['interval'] = interval
-        cfg['polling']['interval_type'] = interval_type
-        cfg['polling']['interval_seconds'] = interval_seconds
-        
-        save_config(cfg)
-        log_success(f"Polling interval saved: {interval} {interval_type}")
-        
-        return JSONResponse({"success": True, "message": "Polling configuration saved"})
-        
-    except Exception as e:
-        log_error(f"Failed to save polling config: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/polling/start")
 async def start_polling_service(request: Request):
@@ -2271,34 +2025,6 @@ async def stop_polling_service(request: Request):
         
     except Exception as e:
         log_error(f"Failed to stop polling: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
-
-@app.post("/api/backup/save-config")
-async def save_backup_interval_config(request: Request):
-    """Save backup interval configuration"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        interval = int(data.get('interval', 1))
-        interval_type = data.get('interval_type', 'days')
-        
-        cfg = safe_load_cfg()
-        if 'backup' not in cfg:
-            cfg['backup'] = {}
-        
-        cfg['backup']['interval'] = interval
-        cfg['backup']['interval_type'] = interval_type
-        
-        save_config(cfg)
-        log_success(f"Backup interval saved: {interval} {interval_type}")
-        
-        return JSONResponse({"success": True, "message": "Backup configuration saved"})
-        
-    except Exception as e:
-        log_error(f"Failed to save backup config: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/backup/start")
@@ -2388,53 +2114,6 @@ async def run_backup_now(request: Request):
         log_error(f"Failed to run manual backup: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
-@app.post("/api/config/save")
-async def save_system_config(request: Request):
-    """Save system configuration with PIN validation"""
-    r = require_auth_redirect()
-    if r:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    try:
-        data = await request.json()
-        current_pin = data.get('current_pin')
-        new_pin = data.get('new_pin')
-        confirm_pin = data.get('confirm_pin')
-        base_url = data.get('base_url')
-        port = data.get('port')
-        
-        cfg = safe_load_cfg()
-        
-        # Validate current PIN
-        if current_pin != get_pin():
-            return JSONResponse({"success": False, "error": "Current PIN is incorrect"})
-        
-        # Validate new PIN if provided
-        if new_pin:
-            if new_pin != confirm_pin:
-                return JSONResponse({"success": False, "error": "New PIN confirmation does not match"})
-            if len(new_pin) < 4:
-                return JSONResponse({"success": False, "error": "PIN must be at least 4 characters"})
-        
-        # Update configuration
-        if 'web' not in cfg:
-            cfg['web'] = {}
-        
-        if base_url:
-            cfg['web']['base_url'] = base_url
-        if port:
-            cfg['web']['port'] = int(port)
-        if new_pin:
-            cfg['web']['pin'] = new_pin
-        
-        save_config(cfg)
-        log_success("System configuration updated")
-        
-        return JSONResponse({"success": True, "message": "Configuration saved successfully"})
-        
-    except Exception as e:
-        log_error(f"Failed to save system config: {e}")
-        return JSONResponse({"success": False, "error": str(e)})
 
 @app.get("/api/logs/tree")
 async def get_logs_tree(request: Request):
@@ -2648,66 +2327,15 @@ async def reload_system(request: Request):
 
 @app.get("/api/logs/wa")
 async def get_wa_logs_api(request: Request, session: str = Query(None)):
-    """Get WhatsApp logs for UI display"""
+    """Get WhatsApp logs via gateway API"""
     r = require_auth_redirect()
     if r:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     
     try:
-        logs_data = []
-        base_log_dir = os.path.join("logs", "wa")
-        
-        if not os.path.exists(base_log_dir):
-            return JSONResponse({"success": True, "logs": []})
-        
-        # If specific session requested
-        if session:
-            session_dir = os.path.join(base_log_dir, session)
-            if os.path.exists(session_dir):
-                for file in os.listdir(session_dir):
-                    if file.endswith('.json'):
-                        number = file[:-5]  # Remove .json extension
-                        file_path = os.path.join(session_dir, file)
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                file_data = json.load(f)
-                                for log_entry in file_data.get('logs', []):
-                                    logs_data.append({
-                                        'timestamp': log_entry.get('timestamp'),
-                                        'session': session,
-                                        'target': number,
-                                        'message': log_entry.get('message', ''),
-                                        'status': log_entry.get('status', 'unknown')
-                                    })
-                        except Exception as e:
-                            log_error(f"Error reading WA log file {file_path}: {e}")
-        else:
-            # Get all sessions
-            for session_name in os.listdir(base_log_dir):
-                session_dir = os.path.join(base_log_dir, session_name)
-                if os.path.isdir(session_dir):
-                    for file in os.listdir(session_dir):
-                        if file.endswith('.json'):
-                            number = file[:-5]  # Remove .json extension
-                            file_path = os.path.join(session_dir, file)
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    file_data = json.load(f)
-                                    for log_entry in file_data.get('logs', []):
-                                        logs_data.append({
-                                            'timestamp': log_entry.get('timestamp'),
-                                            'session': session_name,
-                                            'target': number,
-                                            'message': log_entry.get('message', ''),
-                                            'status': log_entry.get('status', 'unknown')
-                                        })
-                            except Exception as e:
-                                log_error(f"Error reading WA log file {file_path}: {e}")
-        
-        # Sort by timestamp (newest first)
-        logs_data.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        
-        return JSONResponse({"success": True, "logs": logs_data[:100]})  # Limit to 100 entries
+        wb = get_whatsapp_bridge()
+        result = wb.list_logs(session)
+        return JSONResponse({"success": True, "logs": result.get("logs", [])})
     except Exception as e:
         log_error(f"Failed to get WA logs: {e}")
         return JSONResponse({"success": False, "error": str(e)})
